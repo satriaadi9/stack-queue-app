@@ -100,7 +100,7 @@ export default function Host() {
                       role="radio"
                       aria-checked={deck.maxPicks === n}
                       onClick={() => setDeckState((d) => ({ ...d, maxPicks: n }))}
-                      className={`h-11 w-12 rounded-lg font-mono font-semibold ${
+                      className={`h-11 w-12 rounded-lg font-sans font-semibold ${
                         deck.maxPicks === n ? "bg-card text-ink" : "bg-black/20 text-card/70 hover:bg-black/30"
                       }`}
                     >
@@ -202,7 +202,7 @@ export default function Host() {
                 <input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="+20, -21, x5, /2"
+                  placeholder="x1.5, /2, +2, -3"
                   aria-label="Custom operation"
                   aria-invalid={draft !== "" && !draftOp}
                   className="w-40 rounded-lg border border-felt-print/25 bg-black/20 px-3 py-2.5 font-mono text-card placeholder:text-card/30 focus:border-brass focus:outline-none aria-[invalid=true]:border-loss"
@@ -223,7 +223,7 @@ export default function Host() {
                       key={`${t.tier}${opToAscii(op)}`}
                       type="button"
                       onClick={() => setSlot(selected, op)}
-                      className={`rounded-md px-2.5 py-1.5 font-mono text-sm font-semibold back-${t.back}`}
+                      className={`rounded-md px-2.5 py-1.5 font-sans text-sm font-semibold back-${t.back}`}
                       title={t.label}
                     >
                       {formatOp(op)}

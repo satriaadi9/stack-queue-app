@@ -14,18 +14,19 @@ export interface TierDef {
 
 const o = (kind: Op["kind"], n: number): Op => ({ kind, n });
 
+/** Kept deliberately small: every card sits between ×0 and ×3. */
 export const TIERS: TierDef[] = [
   {
     tier: "common",
     label: "Common",
     weight: 55,
     back: "plain",
-    ops: [o("add", 5), o("add", 10), o("sub", 5), o("sub", 10), o("mul", 1)],
+    ops: [o("mul", 1.1), o("mul", 1.2), o("mul", 0.9), o("mul", 0.8), o("add", 2), o("sub", 2)],
   },
-  { tier: "rare", label: "Rare", weight: 25, back: "teal", ops: [o("add", 20), o("sub", 21), o("mul", 2), o("div", 2)] },
-  { tier: "epic", label: "Epic", weight: 13, back: "oxblood", ops: [o("mul", 3), o("mul", 5), o("sub", 50), o("div", 3)] },
-  { tier: "legendary", label: "Legendary", weight: 5, back: "gold", ops: [o("mul", 10), o("mul", 20)] },
-  { tier: "cursed", label: "Cursed", weight: 2, back: "gold", ops: [o("mul", 0), o("div", 10)] },
+  { tier: "rare", label: "Rare", weight: 25, back: "teal", ops: [o("mul", 1.4), o("mul", 1.5), o("mul", 0.7), o("div", 1.5)] },
+  { tier: "epic", label: "Epic", weight: 13, back: "oxblood", ops: [o("mul", 2), o("mul", 2.5), o("div", 2), o("div", 2.5)] },
+  { tier: "legendary", label: "Legendary", weight: 5, back: "gold", ops: [o("mul", 3)] },
+  { tier: "cursed", label: "Cursed", weight: 2, back: "gold", ops: [o("mul", 0), o("div", 3)] },
 ];
 
 const BY_TIER = Object.fromEntries(TIERS.map((t) => [t.tier, t])) as Record<Tier, TierDef>;
@@ -39,21 +40,18 @@ export const backOf = (t: Tier): Back => BY_TIER[t].back;
  */
 export function tierOf(op: Op): Tier {
   const { kind, n } = op;
-  if (kind === "mul") {
-    if (n === 0) return "cursed";
-    if (n >= 10) return "legendary";
-    if (n >= 3) return "epic";
-    if (n === 2) return "rare";
+  if (kind === "add" || kind === "sub") {
+    if (n >= 50) return "epic";
+    if (n >= 20) return "rare";
     return "common";
   }
-  if (kind === "div") {
-    if (n >= 10) return "cursed";
-    if (n >= 3) return "epic";
-    if (n === 2) return "rare";
-    return "common";
-  }
-  if (n >= 50) return "epic";
-  if (n >= 20) return "rare";
+  if (kind === "mul" && n === 0) return "cursed";
+  // How hard the card swings the pot, in either direction: ×0.5 and ÷2 are both 2.
+  const grows = kind === "mul" && n >= 1;
+  const swing = kind === "mul" ? (n >= 1 ? n : 1 / n) : n;
+  if (swing >= 3 - 1e-9) return grows ? "legendary" : "cursed";
+  if (swing >= 2 - 1e-9) return "epic";
+  if (swing >= 1.3) return "rare";
   return "common";
 }
 

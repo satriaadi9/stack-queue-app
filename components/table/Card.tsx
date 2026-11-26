@@ -15,10 +15,18 @@ const SIZE: Record<CardSize, string> = {
   lg: "w-[84px] h-[116px] sm:w-[104px] sm:h-[144px]",
 };
 
+/** Slot numbers on card backs. */
 const NUM: Record<CardSize, string> = {
   sm: "text-lg",
   md: "text-2xl sm:text-3xl",
   lg: "text-4xl sm:text-5xl",
+};
+
+/** Operation on the face. Sized so four characters ("×2.5") fit. */
+const FACE: Record<CardSize, string> = {
+  sm: "text-[15px] sm:text-base",
+  md: "text-xl sm:text-2xl",
+  lg: "text-3xl sm:text-4xl",
 };
 
 interface Props {
@@ -126,11 +134,11 @@ function CardFace({ card, size }: { card: CardT; size: CardSize }) {
       aria-hidden
     >
       <div className={`absolute inset-[4px] rounded-[6px] ${frame}`} />
-      <span className="absolute left-[7px] top-[5px] font-mono text-[9px] font-semibold text-ink-soft tnum">
+      <span className="absolute left-[7px] top-[5px] font-sans text-[9px] font-semibold text-ink-soft tnum">
         {card.slot}
       </span>
       <div className="absolute inset-0 grid place-items-center">
-        <OpText op={card.op} className={`${tone} ${NUM[size]}`} />
+        <OpText op={card.op} className={`${tone} ${FACE[size]}`} />
       </div>
       {size !== "sm" && (
         <span
@@ -152,18 +160,18 @@ export function CardGhost({ size = "md", label }: { size?: CardSize; label?: str
       className={`${SIZE[size]} grid shrink-0 place-items-center rounded-[9px] border border-dashed border-felt-print/25`}
       aria-hidden
     >
-      {label && <span className="font-mono text-[10px] text-felt-print/40">{label}</span>}
+      {label && <span className="font-sans text-[10px] text-felt-print/40">{label}</span>}
     </div>
   );
 }
 
-/** "×20": operator in the bold sans (Bodoni's hairline × vanishes when small), digits in Bodoni. */
+/** "×1.5": a slightly smaller operator so the digits carry the weight. */
 export function OpText({ op, className = "" }: { op: CardT["op"]; className?: string }) {
   const text = formatOp(op);
   return (
-    <span className={`inline-flex items-baseline leading-none tnum ${className}`}>
-      <span className="mr-[0.04em] font-sans text-[0.72em] font-bold">{text[0]}</span>
-      <span className="font-display font-bold tracking-tight">{text.slice(1)}</span>
+    <span className={`inline-flex items-baseline font-sans font-extrabold leading-none tracking-tight tnum ${className}`}>
+      <span className="mr-[0.03em] text-[0.8em]">{text[0]}</span>
+      <span>{text.slice(1)}</span>
     </span>
   );
 }

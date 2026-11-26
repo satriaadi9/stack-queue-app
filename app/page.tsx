@@ -66,7 +66,7 @@ export default function Home() {
                     <span className="rounded bg-card px-1.5 py-0.5 font-mono text-sm font-bold tracking-[0.12em] text-ink">
                       {p.initials}
                     </span>
-                    <span className="font-mono text-sm text-brass-hi tnum">{fmt(p.balance)}</span>
+                    <span className="font-sans text-sm text-brass-hi tnum">{fmt(p.balance)}</span>
                     {isLive(p.round) && (
                       <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-card/50">mid-round</span>
                     )}

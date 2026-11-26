@@ -5,17 +5,20 @@ export interface Op {
   n: number;
 }
 
-/** Hard ceiling on any pot so repeated ×20 can't run away. */
+/** Hard ceiling on any pot, so a host deck full of big multipliers can't run away. */
 export const POT_CAP = 10_000_000;
 
-export const OP_LIMITS: Record<OpKind, { min: number; max: number }> = {
-  add: { min: 1, max: 1000 },
-  sub: { min: 1, max: 1000 },
-  mul: { min: 0, max: 100 },
-  div: { min: 1, max: 100 },
+export const OP_LIMITS: Record<OpKind, { min: number; max: number; decimals: boolean }> = {
+  add: { min: 1, max: 1000, decimals: false },
+  sub: { min: 1, max: 1000, decimals: false },
+  mul: { min: 0, max: 100, decimals: true },
+  div: { min: 1, max: 100, decimals: true },
 };
 
-/** Integer-only application. Division floors. Result never exceeds POT_CAP. */
+/**
+ * The pot stays an integer: results round down. The tiny epsilon stops float
+ * noise (100 × 1.4 = 139.99999…) from costing the player a chip.
+ */
 export function applyOp(pot: number, op: Op): number {
   let r: number;
   switch (op.kind) {
@@ -29,10 +32,10 @@ export function applyOp(pot: number, op: Op): number {
       r = pot * op.n;
       break;
     case "div":
-      r = Math.floor(pot / op.n);
+      r = pot / op.n;
       break;
   }
-  return Math.min(r, POT_CAP);
+  return Math.min(Math.floor(r + 1e-9), POT_CAP);
 }
 
 const SYMBOL: Record<OpKind, string> = {
@@ -54,14 +57,15 @@ export function opToAscii(op: Op): string {
 }
 
 export function parseOp(text: string): Op | null {
-  const m = /^\s*([+\-x*/×÷−])\s*(\d{1,4})\s*$/i.exec(text);
+  const m = /^\s*([+\-x*/×÷−])\s*(\d{1,4}(?:\.\d{1,2})?)\s*$/i.exec(text);
   if (!m) return null;
   const sym = m[1].toLowerCase();
   const kind: OpKind =
     sym === "+" ? "add" : sym === "-" || sym === "−" ? "sub" : sym === "/" || sym === "÷" ? "div" : "mul";
   const n = Number(m[2]);
   const lim = OP_LIMITS[kind];
-  if (!Number.isInteger(n) || n < lim.min || n > lim.max) return null;
+  if (!Number.isFinite(n) || n < lim.min || n > lim.max) return null;
+  if (!lim.decimals && !Number.isInteger(n)) return null;
   return { kind, n };
 }
 

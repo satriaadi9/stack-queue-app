@@ -23,11 +23,22 @@ describe("ops", () => {
     expect(applyOp(10, op("x20"))).toBe(200);
     expect(applyOp(7, op("/2"))).toBe(3);
   });
+  it("handles decimal multipliers without float drift", () => {
+    expect(applyOp(100, op("x1.4"))).toBe(140);
+    expect(applyOp(100, op("x1.1"))).toBe(110);
+    expect(applyOp(7, op("x1.5"))).toBe(10);
+    expect(applyOp(100, op("/1.5"))).toBe(66);
+    expect(applyOp(1, op("x0.9"))).toBe(0);
+  });
   it("caps the pot", () => {
     expect(applyOp(POT_CAP, op("x20"))).toBe(POT_CAP);
   });
   it("parses and rejects", () => {
     expect(parseOp("x5")).toEqual({ kind: "mul", n: 5 });
+    expect(parseOp("x1.5")).toEqual({ kind: "mul", n: 1.5 });
+    expect(parseOp("/2.5")).toEqual({ kind: "div", n: 2.5 });
+    expect(parseOp("+1.5")).toBeNull(); // adds stay whole numbers
+    expect(parseOp("x1.555")).toBeNull();
     expect(parseOp("/0")).toBeNull();
     expect(parseOp("x101")).toBeNull();
     expect(parseOp("hello")).toBeNull();
@@ -40,6 +51,9 @@ describe("pool", () => {
   });
   it("every pool op classifies into its own tier", () => {
     for (const t of TIERS) for (const o of t.ops) expect(tierOf(o)).toBe(t.tier);
+  });
+  it("default pool stays between x0 and x3", () => {
+    for (const t of TIERS) for (const o of t.ops) expect(o.n).toBeLessThanOrEqual(3);
   });
   it("draws roughly by weight", () => {
     const rand = mulberry32(42);
@@ -96,9 +110,28 @@ describe("stack (LIFO)", () => {
     );
     expect(r.outcome).toBe("cashed");
     expect(r.pot).toBe(42);
-    const lines = whatIf(r);
+    const lines = whatIf(r).lines;
     expect(lines.find((l) => l.label === "As a stack")!.result.final).toBe(42);
     expect(lines.find((l) => l.label === "As a queue")!.result.final).toBe(61); // (10+20)*2+1
+  });
+
+  it("what-if replays only as many cards as were taken before cashing out", () => {
+    // picks x3, x2, +1 · stack pops +1 then cashes out
+    const p = deck(["x3", "x2", "+1"]);
+    const r = run(
+      createRound({ mode: "stack", wager: 10, seed: 1, preset: p }),
+      { type: "pick", slot: 1 },
+      { type: "pick", slot: 2 },
+      { type: "pick", slot: 3 },
+      { type: "deal" },
+      { type: "take" },
+      { type: "cashout" },
+    );
+    const w = whatIf(r);
+    expect(w.count).toBe(1);
+    expect(w.partial).toBe(true);
+    expect(w.lines.find((l) => l.label === "As a stack")!.result.final).toBe(11); // +1
+    expect(w.lines.find((l) => l.label === "As a queue")!.result.final).toBe(30); // x3
   });
 
   it("needs minimum picks before deal and blocks illegal moves", () => {
@@ -116,12 +149,14 @@ describe("stack (LIFO)", () => {
     expect(legal(r).pick).toBe(false);
   });
 
-  it("peek reveals the top for a fee, once", () => {
+  it("peek reveals the top for 25% of the wager, once per round", () => {
     let r = run(start(), { type: "pick", slot: 4 }, { type: "pick", slot: 5 }, { type: "pick", slot: 2 }, { type: "deal" });
     r = reduce(r, { type: "peek" });
     expect(r.revealed).toContain("b2");
-    expect(r.pot).toBe(9);
+    expect(r.pot).toBe(7); // ceil(10 × 0.25) = 3
     expect(reduce(r, { type: "peek" })).toBe(r);
+    r = reduce(r, { type: "take" }); // new top card, but the peek is spent
+    expect(legal(r).peek).toBe(false);
   });
 
   it("cash out only after at least one take", () => {
@@ -175,7 +210,7 @@ describe("recursion", () => {
     r = run(r, { type: "unwind" });
     expect(r.pot).toBe(150); // then x5
     expect(r.outcome).toBe("cashed");
-    expect(whatIf(r).find((l) => !l.native)!.result.final).toBe(70); // 10*5 + 20
+    expect(whatIf(r).lines.find((l) => !l.native)!.result.final).toBe(70); // 10*5 + 20
   });
 
   it("overflow risk grows with depth and can bust", () => {
@@ -208,7 +243,7 @@ describe("simulate", () => {
 
 describe("deck codes", () => {
   it("round-trips", () => {
-    const p: DeckPreset = { ...deck(["x20", "-21", "/2"]), name: "Kelas Struktur Data", mode: "queue", shuffle: true, maxPicks: 4 };
+    const p: DeckPreset = { ...deck(["x20", "-21", "/2", "x1.5", "/2.5"]), name: "Kelas Struktur Data", mode: "queue", shuffle: true, maxPicks: 4 };
     p.slots[5] = null;
     expect(decodeDeck(encodeDeck(p))).toEqual(p);
   });

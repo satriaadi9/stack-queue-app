@@ -31,7 +31,7 @@ export function Rail({ children }: { children?: React.ReactNode }) {
               </span>
               <div className="flex flex-col leading-none">
                 <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-card/50">Chips</span>
-                <RollingNumber value={me.balance} className="font-mono text-sm font-semibold text-brass-hi" />
+                <RollingNumber value={me.balance} className="font-sans text-sm font-semibold text-brass-hi" />
               </div>
             </div>
           )}

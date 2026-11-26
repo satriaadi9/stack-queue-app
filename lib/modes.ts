@@ -20,9 +20,9 @@ export const MODE_COPY: Record<Mode, ModeCopy> = {
     how: [
       "Pick 3–5 numbered cards. Each one is pushed onto the top of the tower.",
       "Pop takes the top card, flips it, and applies it to your pot.",
-      "Cash out after any pop. Pay to peek at the top card before you pop it.",
+      "Cash out after any pop. Once per round you can pay a quarter of your wager to peek at the top card.",
     ],
-    tip: "The card you pick first comes out last, so a multiplier there hits the biggest pot.",
+    tip: "Multiplying works in any order, so what matters is which cards come out before you cash out. In a stack, that's the ones you picked last.",
     takeVerb: "Pop",
     putVerb: "push",
   },
@@ -34,9 +34,9 @@ export const MODE_COPY: Record<Mode, ModeCopy> = {
     how: [
       "Pick 3–5 numbered cards. Each one joins the back of the line.",
       "Dequeue takes the front card, flips it, and applies it to your pot.",
-      "After each dequeue you may enqueue one more card from the board, for a small fee.",
+      "After each dequeue you may enqueue one more card from the board for a small fee. You get one peek per round.",
     ],
-    tip: "Build the pot with + cards early and save the × cards for the end of the line.",
+    tip: "In a queue, the cards you picked first come out first. Lead with the backs you trust most, and cash out before the risky ones arrive.",
     takeVerb: "Dequeue",
     putVerb: "enqueue",
   },

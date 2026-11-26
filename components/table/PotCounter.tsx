@@ -39,7 +39,7 @@ export function PotCounter({ pot, wager, state, label = "Pot" }: Props) {
       >
         <RollingNumber value={pot} />
       </span>
-      <span className="mt-1.5 font-mono text-[11px] text-felt-print/80 tnum">
+      <span className="mt-1.5 font-sans text-[11px] text-felt-print/80 tnum">
         wager {fmt(wager)} · {state === "bust" ? "lost" : `×${mult >= 100 ? Math.round(mult) : mult.toFixed(2)}`}
       </span>
     </motion.div>

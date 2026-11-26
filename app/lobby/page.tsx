@@ -33,7 +33,8 @@ export default function Lobby() {
   const lockedMode = preset?.mode ?? null;
 
   const [mode, setMode] = useState<Mode>(lastMode);
-  const [wager, setWager] = useState<number>(lastWager);
+  // Kept as text so the field can be empty or half-typed while editing.
+  const [wagerText, setWagerText] = useState<string>(String(lastWager));
 
   useEffect(() => {
     if (hydrated && !me) router.replace("/");
@@ -43,7 +44,17 @@ export default function Lobby() {
 
   const live = isLive(me.round);
   const activeMode = lockedMode ?? mode;
-  const effectiveWager = Math.min(wager, me.balance);
+  const typed = /^\d{1,9}$/.test(wagerText) ? Number(wagerText) : NaN;
+  const wagerError = Number.isNaN(typed)
+    ? "Enter a whole number of chips."
+    : typed < 1
+      ? "The wager has to be at least 1 chip."
+      : typed > me.balance
+        ? `You only have ${fmt(me.balance)} chips.`
+        : null;
+  const effectiveWager = wagerError ? 0 : typed;
+  const setWager = (n: number) => setWagerText(String(Math.max(1, Math.min(n, me.balance))));
+  const step = effectiveWager >= 1000 ? 100 : 10;
   const broke = me.balance < MIN_WAGER && !live;
   const canWager = me.balance > 0 || live;
 
@@ -148,9 +159,7 @@ export default function Lobby() {
             <h2 id="wager-h" className="font-display text-2xl font-bold">
               Place your wager
             </h2>
-            <span className="font-mono text-sm text-card/60 tnum">
-              balance {fmt(me.balance)}
-            </span>
+            <span className="text-sm text-card/60 tnum">balance {fmt(me.balance)}</span>
           </div>
 
           {broke && (
@@ -165,7 +174,7 @@ export default function Lobby() {
           )}
           {canWager && (
             <>
-              <div role="radiogroup" aria-label="Wager" className="mt-6 flex flex-wrap items-end gap-3 pb-4 sm:gap-5">
+              <div role="radiogroup" aria-label="Wager" className="mt-6 flex flex-wrap items-end gap-2 pb-4 sm:gap-5">
                 {WAGERS.map((w) => (
                   <Chip
                     key={w}
@@ -189,14 +198,55 @@ export default function Lobby() {
                   }}
                 />
               </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <label htmlFor="wager-input" className="text-sm text-card/70">
+                  Or type your own amount
+                </label>
+                <div className="flex items-center rounded-xl bg-black/25 ring-1 ring-felt-print/30 focus-within:ring-2 focus-within:ring-brass">
+                  <button
+                    type="button"
+                    disabled={live || effectiveWager <= 1}
+                    onClick={() => (setWager((effectiveWager || 1) - step), sfx.chip())}
+                    aria-label={`Lower the wager by ${step}`}
+                    className="grid size-11 place-items-center text-xl text-card/70 hover:text-card disabled:opacity-30"
+                  >
+                    −
+                  </button>
+                  <input
+                    id="wager-input"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={wagerText}
+                    disabled={live}
+                    onChange={(e) => setWagerText(e.target.value.replace(/[^\d]/g, "").slice(0, 9))}
+                    onKeyDown={(e) => e.key === "Enter" && !wagerError && play()}
+                    aria-invalid={!!wagerError}
+                    aria-describedby="wager-hint"
+                    className="w-28 bg-transparent py-2 text-center text-xl font-bold text-card tnum outline-none focus-visible:outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={live || effectiveWager >= me.balance}
+                    onClick={() => (setWager((effectiveWager || 0) + step), sfx.chip())}
+                    aria-label={`Raise the wager by ${step}`}
+                    className="grid size-11 place-items-center text-xl text-card/70 hover:text-card disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                </div>
+                <span id="wager-hint" className={`text-sm ${wagerError ? "text-loss-hi" : "text-card/45"}`} aria-live="polite">
+                  {wagerError ?? `Any amount from 1 to ${fmt(me.balance)}`}
+                </span>
+              </div>
               <div className="mt-6 flex flex-wrap items-center gap-4">
                 <button
                   type="button"
                   onClick={play}
-                  disabled={live || effectiveWager < 1}
+                  disabled={live || !!wagerError}
                   className="plaque plaque-brass min-w-60 py-4 text-sm"
                 >
-                  Deal me in · {fmt(effectiveWager)}
+                  {wagerError ? "Deal me in" : `Deal me in · ${fmt(effectiveWager)}`}
                 </button>
                 {deckName && (
                   <button

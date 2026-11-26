@@ -17,7 +17,7 @@ interface Props {
 
 export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: Props) {
   const net = (round.outcome === "cashed" ? round.pot : 0) - round.wager;
-  const lines = whatIf(round);
+  const { lines, count, partial } = whatIf(round);
   const values = lines.map((l) => l.result.final);
   const best = Math.max(...values, 1);
   const swing = values.length === 2 ? Math.abs(values[0] - values[1]) : 0;
@@ -52,7 +52,7 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
           >
             {headline}
           </h2>
-          <p className="mt-1 font-mono text-sm tnum">
+          <p className="mt-1 font-sans text-sm tnum">
             <span className={net > 0 ? "text-brass-hi" : net < 0 ? "text-loss-hi" : "text-card/70"}>
               {net > 0 ? "+" : net < 0 ? "−" : "±"}
               {fmt(Math.abs(net))}
@@ -60,7 +60,7 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
             <span className="text-card/50"> · balance {fmt(balance)}</span>
           </p>
         </div>
-        <button type="button" onClick={onHide} className="text-xs font-semibold uppercase tracking-[0.16em] text-card/50 hover:text-card">
+        <button type="button" onClick={onHide} className="shrink-0 whitespace-nowrap text-xs font-semibold uppercase tracking-[0.16em] text-card/50 hover:text-card">
           View table
         </button>
       </div>
@@ -68,7 +68,9 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
       {lines.length > 0 && (
         <section className="mt-5 rounded-xl bg-black/25 p-4" aria-labelledby="whatif-h">
           <h3 id="whatif-h" className="felt-print">
-            What if: the same {round.picks.length} cards, fully played
+            {partial
+              ? `What if: the first ${count} card${count === 1 ? "" : "s"} out, in each order`
+              : `What if: the same ${count} cards, fully played`}
           </h3>
           <ul className="mt-3 space-y-3">
             {lines.map((l) => (
@@ -79,7 +81,7 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
                     <span className="text-card/50"> · {l.order}</span>
                     {l.native && <span className="ml-2 text-[10px] font-bold uppercase tracking-[0.16em] text-brass-hi">this table</span>}
                   </span>
-                  <span className={`font-mono tnum ${l.result.busted ? "text-loss-hi" : "text-card"}`}>
+                  <span className={`font-sans tnum ${l.result.busted ? "text-loss-hi" : "text-card"}`}>
                     {l.result.busted ? "bust" : fmt(l.result.final)}
                   </span>
                 </div>
@@ -91,7 +93,7 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
                     transition={{ duration: 0.8, delay: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
                   />
                 </div>
-                <p className="mt-1 font-mono text-[10px] text-felt-print/55">
+                <p className="mt-1 font-sans text-[10px] text-felt-print/55">
                   {fmt(round.wager)} {l.result.steps.map((s) => `→ ${fmt(Math.max(0, s.after))}`).join(" ")}
                 </p>
               </li>
@@ -99,8 +101,10 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
           </ul>
           <p className="mt-3 border-t border-felt-print/10 pt-3 text-sm text-card/70">
             {swing === 0
-              ? "Both orders land in the same place this time. It happens when the cards are all + or all ×."
-              : `Same cards. The order alone is worth ${fmt(swing)} chips.`}
+              ? "Same result either way: multiplying doesn't care about order (2 × 3 = 3 × 2). Order matters when + or − cards are mixed in, or when you cash out early."
+              : partial
+                ? `You stopped after ${count}. The structure decided which cards those were, and that's worth ${fmt(swing)} chips.`
+                : `Same cards. The order alone is worth ${fmt(swing)} chips.`}
             {round.fees > 0 && ` You also paid ${fmt(round.fees)} in peek/enqueue fees.`}
           </p>
         </section>

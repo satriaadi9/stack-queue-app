@@ -49,7 +49,7 @@ export default function Regulars() {
                   <th className="pb-3" />
                 </tr>
               </thead>
-              <tbody className="font-mono text-sm tnum">
+              <tbody className="font-sans text-sm tnum">
                 {rows.map((p, i) => (
                   <tr key={p.initials} className={`border-t border-felt-print/10 ${p.initials === active ? "bg-brass/10" : ""}`}>
                     <td className={`py-3 pr-3 font-display text-lg font-bold ${i === 0 ? "text-brass-hi" : "text-card/50"}`}>{i + 1}</td>

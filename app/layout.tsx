@@ -1,15 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Bodoni_Moda, IBM_Plex_Sans_Condensed, JetBrains_Mono } from "next/font/google";
+import { Archivo, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/Providers";
 import "./globals.css";
 
-const bodoni = Bodoni_Moda({ variable: "--font-bodoni", subsets: ["latin"], display: "swap" });
-const plex = IBM_Plex_Sans_Condensed({
-  variable: "--font-plex",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
+// Archivo: a sturdy grotesque with a width axis. Wide for headings and numbers, normal for reading.
+const archivo = Archivo({ variable: "--font-archivo", subsets: ["latin"], axes: ["wdth"], display: "swap" });
 const jet = JetBrains_Mono({ variable: "--font-jet", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
@@ -26,7 +21,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${bodoni.variable} ${plex.variable} ${jet.variable}`}>
+      <body className={`${archivo.variable} ${jet.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

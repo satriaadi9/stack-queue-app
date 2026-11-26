@@ -94,10 +94,10 @@ export function LinearTable({ round, can, locked, dispatch }: Props) {
                 className="plaque"
                 disabled={!can.peek || locked}
                 onClick={() => dispatch({ type: "peek" })}
-                title={`Reveal the ${isStack ? "top" : "front"} card without applying it`}
+                title={`Reveal the ${isStack ? "top" : "front"} card without applying it. Once per round.`}
               >
-                Peek −{fmt(peekCost(round.wager))}
-                <span className="kbd">K</span>
+                {round.peekUsed ? "Peek used" : `Peek once · −${fmt(peekCost(round.wager))}`}
+                {!round.peekUsed && <span className="kbd">K</span>}
               </button>
               <button
                 type="button"
@@ -129,7 +129,7 @@ function DeckHint({ round, can }: { round: Round; can: Legal }) {
     return (
       <>
         Pick a number to <span className="font-semibold text-card">{verb}</span> it ·{" "}
-        <span className="font-mono tnum">
+        <span className="font-sans tnum">
           {round.structure.length}/{round.maxPicks}
         </span>
       </>
@@ -212,7 +212,7 @@ function PlayedRow({ round }: { round: Round }) {
         {round.resolved.map((r, i) => (
           <li key={r.card.id} className="flex flex-col items-center gap-1.5">
             <Card card={r.card} size="sm" faceUp />
-            <span className="font-mono text-[10px] text-felt-print/80 tnum">
+            <span className="font-sans text-[10px] text-felt-print/80 tnum">
               <span className="text-felt-print/45">{i + 1}.</span> {fmt(r.before)}→
               <span className={r.after > r.before ? "text-card" : r.after < r.before ? "text-loss-hi" : ""}>
                 {fmt(Math.max(0, r.after))}

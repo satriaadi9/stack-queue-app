@@ -69,7 +69,7 @@ export function RecursionTable({ round, can, locked, dispatch }: Props) {
                       : "all frames returned."}
             </span>
           </h2>
-          <span className="font-mono text-xs text-felt-print/60 tnum">
+          <span className="font-sans text-xs text-felt-print/60 tnum">
             depth {round.depth}/{MAX_DEPTH}
           </span>
         </div>
@@ -135,7 +135,7 @@ export function RecursionTable({ round, can, locked, dispatch }: Props) {
                 >
                   <span className="w-16 font-mono text-xs text-card/85">dive({f.depth})</span>
                   <Card card={f.card} size="sm" faceUp emphasis={isTop && round.phase === "resolve"} />
-                  <span className="ml-auto text-right font-mono text-[11px] tnum">
+                  <span className="ml-auto text-right font-sans text-[11px] tnum">
                     {f.status === "returned" ? (
                       <>
                         <span className="text-felt-print/60">got {fmt(f.arg!)}</span>
@@ -164,7 +164,7 @@ export function RecursionTable({ round, can, locked, dispatch }: Props) {
             <>
               <p className="text-center text-sm text-card/75">
                 If you return now, the stack unwinds to{" "}
-                <span className={`font-mono font-semibold tnum ${proj.busted ? "text-loss-hi" : "text-brass-hi"}`}>
+                <span className={`font-sans font-semibold tnum ${proj.busted ? "text-loss-hi" : "text-brass-hi"}`}>
                   {proj.busted ? "a bust" : fmt(proj.final)}
                 </span>
                 .

@@ -52,6 +52,8 @@ export interface Round {
   /** Card ids whose face is visible. */
   revealed: string[];
   fees: number;
+  /** Peek is allowed once per round. */
+  peekUsed: boolean;
   /** Queue only: an extra enqueue is allowed once per dequeue. */
   canEnqueue: boolean;
 
@@ -75,7 +77,8 @@ export type Action =
   | { type: "return" }
   | { type: "unwind" };
 
-export const peekCost = (wager: number) => Math.max(1, Math.ceil(wager * 0.1));
+export const PEEK_RATE = 0.25;
+export const peekCost = (wager: number) => Math.max(1, Math.ceil(wager * PEEK_RATE));
 export const enqueueFee = (wager: number) => Math.max(1, Math.ceil(wager * 0.05));
 export const overflowRisk = (depth: number) => (depth <= 1 ? 0 : Math.min(1, (depth - 1) * 0.08));
 
@@ -99,6 +102,7 @@ export function createRound(opts: { mode: Mode; wager: number; seed: number; pre
     resolved: [],
     revealed: [],
     fees: 0,
+    peekUsed: false,
     canEnqueue: false,
     depth: 1,
     offer: null,
@@ -157,7 +161,8 @@ export function legal(r: Round): Legal {
     pick: linear && r.phase === "build" && r.structure.length < r.maxPicks && avail > 0,
     deal: linear && r.phase === "build" && r.structure.length >= r.minPicks,
     take: linear && r.phase === "resolve" && r.structure.length > 0,
-    peek: linear && r.phase === "resolve" && !!out && !r.revealed.includes(out.id) && r.pot > peekCost(r.wager),
+    peek:
+      linear && r.phase === "resolve" && !r.peekUsed && !!out && !r.revealed.includes(out.id) && r.pot > peekCost(r.wager),
     enqueue:
       r.mode === "queue" &&
       r.phase === "resolve" &&
@@ -224,7 +229,7 @@ export function reduce(r: Round, a: Action): Round {
       const card = nextOut(r)!;
       const cost = peekCost(r.wager);
       return log(
-        { ...r, pot: r.pot - cost, fees: r.fees + cost, revealed: [...r.revealed, card.id] },
+        { ...r, pot: r.pot - cost, fees: r.fees + cost, peekUsed: true, revealed: [...r.revealed, card.id] },
         { kind: "peek", call: `peek()`, result: `${formatOp(card.op)} · fee ${cost}`, before: r.pot, after: r.pot - cost },
       );
     }

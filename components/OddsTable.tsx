@@ -27,14 +27,15 @@ export function OddsTable() {
                 <span className={`back-${t.back} card-body block h-7 w-5 rounded-[4px]`} aria-label={`${t.back} back`} />
               </td>
               <td className={`py-2 font-semibold ${t.tier === "cursed" ? "text-loss-hi" : ""}`}>{t.label}</td>
-              <td className="py-2 text-right font-mono tnum text-card/80">{t.weight}%</td>
-              <td className="py-2 pl-4 font-mono text-card/80">{t.ops.map(formatOp).join("  ")}</td>
+              <td className="py-2 text-right font-sans tnum text-card/80">{t.weight}%</td>
+              <td className="py-2 pl-4 font-sans text-card/80">{t.ops.map(formatOp).join("  ")}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="mt-3 text-xs text-card/55">
-        Legendary and cursed cards share the same gold back. A gold card is a 5-in-7 shot at a jackpot.
+        Every card sits between ×0 and ×3, and the pot rounds down to whole chips. Legendary and cursed cards share the
+        same gold back, so a gold card is a 5-in-7 shot at ×3.
       </p>
     </details>
   );

@@ -3,8 +3,8 @@
 /* next/font defines --font-bodoni etc. on <body>, so these must be inlined
    into each utility rather than resolved once on :root. */
 @theme inline {
-  --font-display: var(--font-bodoni), "Didot", Georgia, serif;
-  --font-sans: var(--font-plex), "Arial Narrow", system-ui, sans-serif;
+  --font-display: var(--font-archivo), system-ui, sans-serif;
+  --font-sans: var(--font-archivo), system-ui, sans-serif;
   --font-mono: var(--font-jet), ui-monospace, monospace;
 }
 
@@ -40,7 +40,7 @@ html {
 body {
   min-height: 100dvh;
   color: var(--color-card);
-  font-family: var(--font-plex), "Arial Narrow", system-ui, sans-serif;
+  font-family: var(--font-archivo), system-ui, sans-serif;
   background-color: var(--color-felt);
   /* lamp overhead + vignette + woven felt grain */
   background-image:
@@ -66,13 +66,18 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Headings and big numbers use Archivo's wide cut, like casino signage. */
+.font-display {
+  font-stretch: 115%;
+}
+
 /* Text printed onto the felt, like a casino layout */
 .felt-print {
   color: var(--color-felt-print);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-size: 0.68rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .felt-zone {
@@ -162,9 +167,9 @@ body {
   border-radius: 10px;
   padding: 0.7rem 1.15rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   background: var(--color-card);
   color: var(--color-ink);
   box-shadow:
