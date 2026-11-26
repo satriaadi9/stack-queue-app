@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useHydrated } from "@/components/Providers";
 import { Card } from "@/components/table/Card";
 import { Rail } from "@/components/table/Rail";
-import { BOARD_SIZE, decodeDeck, encodeDeck, MODES, type DeckPreset, type Mode } from "@/lib/engine/deck-code";
+import { BOARD_SIZE, decodeDeck, encodeDeck, MODES, type DeckPreset, type TableChoice } from "@/lib/engine/deck-code";
+import { DEFAULT_FEE_RATE, MAX_FEE_RATE, TIMER_LIMITS, TIMER_PRESETS } from "@/lib/engine/rules";
 import { formatOp, opToAscii, parseOp, type Op } from "@/lib/engine/ops";
 import { drawOp, tierDef, tierOf, TIERS } from "@/lib/engine/pool";
 import { mulberry32, newSeed } from "@/lib/engine/rng";
@@ -19,6 +20,8 @@ const emptyDeck = (): DeckPreset => ({
   slots: Array.from({ length: BOARD_SIZE }, () => null),
   maxPicks: 5,
   shuffle: false,
+  feeRate: null,
+  timers: null,
 });
 
 export default function Host() {
@@ -114,27 +117,29 @@ export default function Host() {
             <div>
               <span className="felt-print">Table</span>
               <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Mode">
-                {[null, ...MODES].map((m) => (
+                {([null, ...MODES, "random"] as (TableChoice | null)[]).map((m) => (
                   <button
                     key={m ?? "any"}
                     type="button"
                     role="radio"
                     aria-checked={deck.mode === m}
-                    onClick={() => setDeckState((d) => ({ ...d, mode: m as Mode | null }))}
+                    onClick={() => setDeckState((d) => ({ ...d, mode: m }))}
                     className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${
                       deck.mode === m ? "bg-card text-ink" : "bg-black/20 text-card/70 hover:bg-black/30"
                     }`}
                   >
-                    {m ? `${MODE_COPY[m].structure} only` : "Player chooses"}
+                    {m === null ? "Player chooses" : m === "random" ? "Random each round" : `${MODE_COPY[m].structure} only`}
                   </button>
                 ))}
               </div>
-              {deck.mode === "recursion" && (
+              {(deck.mode === "recursion" || deck.mode === "random") && (
                 <p className="mt-2 text-xs text-card/50">
                   Recursion deals slots 1–3 at depth 1, slots 4–6 at depth 2, and so on, wrapping after depth 4.
                 </p>
               )}
             </div>
+
+            <HouseRules deck={deck} onChange={(patch) => setDeckState((d) => ({ ...d, ...patch }))} />
 
             <section aria-labelledby="slots-h">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -290,3 +295,122 @@ export default function Host() {
     </>
   );
 }
+
+const field =
+  "w-24 rounded-lg border border-felt-print/25 bg-black/20 px-3 py-2 text-card tnum focus:border-brass focus:outline-none aria-[invalid=true]:border-loss";
+
+/** Admin fee and clocks for every player who opens this deck. */
+function HouseRules({ deck, onChange }: { deck: DeckPreset; onChange: (patch: Partial<DeckPreset>) => void }) {
+  const [feeText, setFeeText] = useState(deck.feeRate === null ? "" : String(Math.round(deck.feeRate * 100)));
+  const [pickText, setPickText] = useState(String(deck.timers?.pick ?? 20));
+  const [openText, setOpenText] = useState(String(deck.timers?.open ?? 30));
+  const feeBad = feeText !== "" && !(/^\d{1,2}$/.test(feeText) && Number(feeText) <= MAX_FEE_RATE * 100);
+
+  const inRange = (t: string, k: "pick" | "open") =>
+    /^\d{1,3}$/.test(t) && (Number(t) === 0 || (Number(t) >= TIMER_LIMITS[k].min && Number(t) <= TIMER_LIMITS[k].max));
+  const setClock = (p: string, o: string) => {
+    if (inRange(p, "pick") && inRange(o, "open")) onChange({ timers: { pick: Number(p), open: Number(o) } });
+  };
+
+  return (
+    <div className="grid gap-5 sm:grid-cols-2">
+      <div>
+        <span className="felt-print">Admin fee</span>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            inputMode="numeric"
+            value={feeText}
+            placeholder={String(DEFAULT_FEE_RATE * 100)}
+            aria-label="Admin fee percent"
+            aria-invalid={feeBad}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^\d]/g, "").slice(0, 2);
+              setFeeText(v);
+              if (v === "") onChange({ feeRate: null });
+              else if (Number(v) <= MAX_FEE_RATE * 100) onChange({ feeRate: Number(v) / 100 });
+            }}
+            className={field}
+          />
+          <span className="text-card/70">% of the wager</span>
+        </div>
+        <p className="mt-1.5 text-xs text-card/45">
+          Empty uses the default {DEFAULT_FEE_RATE * 100}%. 0 means no fee, and the maximum is {MAX_FEE_RATE * 100}%.
+        </p>
+      </div>
+
+      <div>
+        <span className="felt-print">Clock</span>
+        <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Clock">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={deck.timers === null}
+            onClick={() => onChange({ timers: null })}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold ${deck.timers === null ? "bg-card text-ink" : "bg-black/20 text-card/70 hover:bg-black/30"}`}
+          >
+            Players choose
+          </button>
+          {Object.values(TIMER_PRESETS).map((p) => {
+            const on = deck.timers?.pick === p.pick && deck.timers?.open === p.open;
+            return (
+              <button
+                key={p.label}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => {
+                  setPickText(String(p.pick));
+                  setOpenText(String(p.open));
+                  onChange({ timers: { pick: p.pick, open: p.open } });
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold ${on ? "bg-card text-ink" : "bg-black/20 text-card/70 hover:bg-black/30"}`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        {deck.timers !== null && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-card/70">
+            <label className="flex items-center gap-2">
+              Pick
+              <input
+                inputMode="numeric"
+                value={pickText}
+                aria-invalid={!inRange(pickText, "pick")}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^\d]/g, "").slice(0, 3);
+                  setPickText(v);
+                  setClock(v, openText);
+                }}
+                className={field}
+              />
+              s
+            </label>
+            <label className="flex items-center gap-2">
+              Open
+              <input
+                inputMode="numeric"
+                value={openText}
+                aria-invalid={!inRange(openText, "open")}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^\d]/g, "").slice(0, 3);
+                  setOpenText(v);
+                  setClock(pickText, v);
+                }}
+                className={field}
+              />
+              s
+            </label>
+          </div>
+        )}
+        <p className="mt-1.5 text-xs text-card/45">
+          {deck.timers === null
+            ? "Each player picks their own clock in the lobby."
+            : "Everyone at this table gets the same clock. 0 turns that clock off."}
+        </p>
+      </div>
+    </div>
+  );
+}
+

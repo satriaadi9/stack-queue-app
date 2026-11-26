@@ -107,7 +107,7 @@ export function RecursionTable({ round, can, locked, dispatch }: Props) {
 
       <div className="mt-10 grid gap-8 md:grid-cols-[minmax(260px,auto)_1fr] md:items-start">
         <motion.section
-          className={`felt-zone relative px-4 pb-4 pt-9 ${overflow ? "border-loss!" : ""}`}
+          className={`felt-zone relative isolate px-4 pb-4 pt-9 ${overflow ? "border-loss!" : ""}`}
           aria-label="Call stack"
           animate={overflow ? { x: [0, -8, 7, -5, 3, 0] } : { x: 0 }}
           transition={{ duration: 0.45 }}

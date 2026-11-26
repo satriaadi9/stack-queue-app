@@ -98,6 +98,11 @@ export const sfx = {
     o.start();
     o.stop(c.currentTime + 0.7);
   },
+  tick() {
+    const c = ac();
+    if (!c) return;
+    noise(c, 0.025, 4200, 10, 0.18);
+  },
   cash() {
     const c = ac();
     if (!c) return;

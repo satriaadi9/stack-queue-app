@@ -151,8 +151,10 @@ function StackZone({ round }: { round: Round }) {
   // Render top first. Each lower card tucks behind the one above it.
   const cards = round.structure.slice().reverse();
   return (
-    <section className="felt-zone relative flex min-h-[220px] flex-col items-center px-16 pb-6 pt-9" aria-label="Stack">
-      <span className="felt-print absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap">Stack · LIFO</span>
+    <section className="felt-zone relative isolate flex min-h-[220px] flex-col items-center px-16 pb-6 pt-9" aria-label="Stack">
+      <span className="felt-print absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap">
+        {round.phase === "done" && cards.length > 0 ? "Left unopened" : "Stack · LIFO"}
+      </span>
       {cards.length === 0 ? (
         <div className="mt-2">
           <CardGhost size="sm" label="empty" />
@@ -170,7 +172,7 @@ function StackZone({ round }: { round: Round }) {
                     top →
                   </motion.span>
                 )}
-                <Card card={c} size="sm" faceUp={round.revealed.includes(c.id)} emphasis={i === 0 && round.phase === "resolve"} />
+                <Card card={c} size="sm" faceUp={round.phase === "done" || round.revealed.includes(c.id)} emphasis={i === 0 && round.phase === "resolve"} />
               </li>
             ))}
           </AnimatePresence>
@@ -185,8 +187,10 @@ function QueueZone({ round }: { round: Round }) {
   const cards = round.structure;
   const tight = cards.length > 5;
   return (
-    <section className="felt-zone relative flex min-h-[150px] flex-col px-5 pb-5 pt-9 md:min-w-[320px]" aria-label="Queue">
-      <span className="felt-print absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap">Queue · FIFO</span>
+    <section className="felt-zone relative isolate flex min-h-[150px] flex-col px-5 pb-5 pt-9 md:min-w-[320px]" aria-label="Queue">
+      <span className="felt-print absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap">
+        {round.phase === "done" && cards.length > 0 ? "Left unopened" : "Queue · FIFO"}
+      </span>
       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.2em]">
         <span className="text-brass-hi">← front · out</span>
         <span className="text-felt-print/60">back · in ←</span>
@@ -195,7 +199,7 @@ function QueueZone({ round }: { round: Round }) {
         {cards.length === 0 && <CardGhost size="sm" label="empty" />}
         {cards.map((c, i) => (
           <li key={c.id} style={{ marginLeft: i === 0 ? 0 : tight ? -12 : 8, zIndex: 40 - i }} className="relative">
-            <Card card={c} size="sm" faceUp={round.revealed.includes(c.id)} emphasis={i === 0 && round.phase === "resolve"} />
+            <Card card={c} size="sm" faceUp={round.phase === "done" || round.revealed.includes(c.id)} emphasis={i === 0 && round.phase === "resolve"} />
           </li>
         ))}
       </ol>

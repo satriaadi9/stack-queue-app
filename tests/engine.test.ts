@@ -4,6 +4,7 @@ import { BOARD_SIZE, decodeDeck, encodeDeck, type DeckPreset } from "@/lib/engin
 import { applyOp, parseOp, POT_CAP, type Op } from "@/lib/engine/ops";
 import { drawOp, tierOf, TIERS } from "@/lib/engine/pool";
 import { mulberry32 } from "@/lib/engine/rng";
+import { maxAffordable, tableFee } from "@/lib/engine/rules";
 import { createRound, legal, overflowRisk, payout, reduce, type Action, type Round } from "@/lib/engine/round";
 import { simulate, whatIf } from "@/lib/engine/whatif";
 
@@ -13,7 +14,7 @@ const run = (r: Round, ...actions: Action[]) => actions.reduce(reduce, r);
 /** A fully fixed deck so outcomes are exact. Slot n holds ops[n-1]. */
 function deck(ops: string[], extra: Partial<DeckPreset> = {}): DeckPreset {
   const slots = Array.from({ length: BOARD_SIZE }, (_, i) => (ops[i] ? op(ops[i]) : op("+1")));
-  return { name: "test", mode: null, slots, maxPicks: 5, shuffle: false, ...extra };
+  return { name: "test", mode: null, slots, maxPicks: 5, shuffle: false, feeRate: null, timers: null, ...extra };
 }
 
 describe("ops", () => {
@@ -233,6 +234,80 @@ describe("recursion", () => {
   });
 });
 
+describe("admin fee", () => {
+  it("is 10% rounded up, at least 1 chip", () => {
+    expect(tableFee(100, 0.1)).toBe(10);
+    expect(tableFee(15, 0.1)).toBe(2);
+    expect(tableFee(1, 0.1)).toBe(1);
+    expect(tableFee(100, 0)).toBe(0);
+  });
+  it("max affordable wager leaves room for the fee", () => {
+    expect(maxAffordable(1000, 0.1)).toBe(909); // 909 + 91 = 1000
+    expect(maxAffordable(2, 0.1)).toBe(1);
+    expect(maxAffordable(1, 0.1)).toBe(0);
+    for (let b = 0; b < 500; b++) {
+      const w = maxAffordable(b, 0.1);
+      expect(w === 0 || w + tableFee(w, 0.1) <= b).toBe(true);
+      expect(w + 1 + tableFee(w + 1, 0.1)).toBeGreaterThan(b);
+    }
+  });
+});
+
+describe("clocks", () => {
+  const timers = { pick: 20, open: 30 };
+  const T0 = 1_000_000;
+
+  it("pick clock auto-picks up to the minimum and deals", () => {
+    let r = createRound({ mode: "stack", wager: 100, seed: 5, preset: null, timers, now: T0 });
+    expect(r.pickDeadline).toBe(T0 + 20_000);
+    r = reduce(r, { type: "pick", slot: 4 }, T0 + 1000);
+    expect(reduce(r, { type: "timeout" }, T0 + 19_999)).toBe(r); // not yet
+    r = reduce(r, { type: "timeout" }, T0 + 20_000);
+    expect(r.phase).toBe("resolve");
+    expect(r.structure).toHaveLength(3);
+    expect(r.structure[0].slot).toBe(4);
+    expect(r.autoPicked).toBe(true);
+    expect(r.pickDeadline).toBeNull();
+    expect(r.openDeadline).toBe(T0 + 50_000);
+  });
+
+  it("open clock cashes out at the current pot, even before any card is opened", () => {
+    let r = createRound({ mode: "queue", wager: 100, seed: 5, preset: deck(["x2", "x2", "x2"]), timers, now: T0 });
+    r = run(r, { type: "pick", slot: 1 }, { type: "pick", slot: 2 }, { type: "pick", slot: 3 });
+    r = reduce(r, { type: "deal" }, T0 + 5000);
+    r = reduce(r, { type: "take" }, T0 + 6000);
+    r = reduce(r, { type: "timeout" }, T0 + 35_000);
+    expect(r.outcome).toBe("cashed");
+    expect(r.timedOut).toBe(true);
+    expect(r.pot).toBe(200);
+    expect(payout(r)).toBe(200);
+    expect(r.structure).toHaveLength(2); // left unopened
+
+    let r2 = createRound({ mode: "stack", wager: 100, seed: 5, preset: null, timers, now: T0 });
+    r2 = reduce(r2, { type: "timeout" }, T0 + 20_000); // auto-deal
+    r2 = reduce(r2, { type: "timeout" }, T0 + 50_000); // nothing opened
+    expect(r2.outcome).toBe("cashed");
+    expect(payout(r2)).toBe(100);
+  });
+
+  it("recursion: pick clock chooses a card, open clock returns", () => {
+    let r = createRound({ mode: "recursion", wager: 100, seed: 5, preset: null, timers, now: T0 });
+    r = reduce(r, { type: "timeout" }, T0 + 20_000);
+    expect(r.structure).toHaveLength(1);
+    expect(r.openDeadline).toBe(T0 + 50_000);
+    r = reduce(r, { type: "timeout" }, T0 + 50_000);
+    expect(r.phase).toBe("resolve");
+    r = reduce(r, { type: "unwind" }, T0 + 51_000);
+    expect(r.outcome === "cashed" || r.outcome === "bust").toBe(true);
+  });
+
+  it("no clocks when timers are off", () => {
+    const r = createRound({ mode: "stack", wager: 100, seed: 5, preset: null, timers: { pick: 0, open: 0 }, now: T0 });
+    expect(r.pickDeadline).toBeNull();
+    expect(reduce(r, { type: "timeout" }, T0 + 10_000_000)).toBe(r);
+  });
+});
+
 describe("simulate", () => {
   it("stops at bust", () => {
     const res = simulate(10, [op("-21"), op("x20")] as Op[]);
@@ -246,6 +321,14 @@ describe("deck codes", () => {
     const p: DeckPreset = { ...deck(["x20", "-21", "/2", "x1.5", "/2.5"]), name: "Kelas Struktur Data", mode: "queue", shuffle: true, maxPicks: 4 };
     p.slots[5] = null;
     expect(decodeDeck(encodeDeck(p))).toEqual(p);
+  });
+  it("carries fee, timers and random table", () => {
+    const p: DeckPreset = { ...deck([]), mode: "random", feeRate: 0.2, timers: { pick: 15, open: 45 } };
+    expect(decodeDeck(encodeDeck(p))).toEqual(p);
+  });
+  it("still reads links made before fee and timers existed", () => {
+    const old = Buffer.from(JSON.stringify({ v: 1, m: "s", s: Array(12).fill("?").join(","), p: 5, sh: 0 })).toString("base64url");
+    expect(decodeDeck(old)).toMatchObject({ mode: "stack", feeRate: null, timers: null });
   });
   it("rejects garbage", () => {
     expect(decodeDeck("not a code!")).toBeNull();

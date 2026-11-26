@@ -7,14 +7,18 @@ import { useEffect, useMemo, useState } from "react";
 import { ModeDiagram } from "@/components/ModeDiagram";
 import { OddsTable } from "@/components/OddsTable";
 import { useHydrated } from "@/components/Providers";
+import { TableRules } from "@/components/TableRules";
 import { Chip } from "@/components/table/Chip";
 import { Rail } from "@/components/table/Rail";
-import { decodeDeck, MODES, type Mode } from "@/lib/engine/deck-code";
+import { decodeDeck, MODES, type TableChoice } from "@/lib/engine/deck-code";
 import { fmt } from "@/lib/engine/ops";
 import { WAGERS } from "@/lib/engine/round";
-import { MODE_COPY } from "@/lib/modes";
+import { maxAffordable, tableFee } from "@/lib/engine/rules";
+import { MODE_COPY, TABLE_COPY } from "@/lib/modes";
 import { sfx } from "@/lib/sfx";
-import { isLive, LOAN_AMOUNT, MIN_WAGER, useGame, useMe } from "@/lib/store";
+import { isLive, LOAN_AMOUNT, MIN_WAGER, rulesFor, useGame, useMe } from "@/lib/store";
+
+const CHOICES: TableChoice[] = [...MODES, "random"];
 
 export default function Lobby() {
   const hydrated = useHydrated();
@@ -28,11 +32,14 @@ export default function Lobby() {
   const startRound = useGame((s) => s.startRound);
   const takeLoan = useGame((s) => s.takeLoan);
   const logout = useGame((s) => s.logout);
+  const timerPreset = useGame((s) => s.timerPreset);
+  const customTimers = useGame((s) => s.customTimers);
 
   const preset = useMemo(() => (deckCode ? decodeDeck(deckCode) : null), [deckCode]);
   const lockedMode = preset?.mode ?? null;
 
-  const [mode, setMode] = useState<Mode>(lastMode);
+  const rules = useMemo(() => rulesFor({ timerPreset, customTimers }, preset), [timerPreset, customTimers, preset]);
+  const [mode, setMode] = useState<TableChoice>(lastMode);
   // Kept as text so the field can be empty or half-typed while editing.
   const [wagerText, setWagerText] = useState<string>(String(lastWager));
 
@@ -44,19 +51,22 @@ export default function Lobby() {
 
   const live = isLive(me.round);
   const activeMode = lockedMode ?? mode;
+  // The fee is paid on top of the wager, so the biggest wager is a bit under the balance.
+  const maxWager = maxAffordable(me.balance, rules.feeRate);
   const typed = /^\d{1,9}$/.test(wagerText) ? Number(wagerText) : NaN;
   const wagerError = Number.isNaN(typed)
     ? "Enter a whole number of chips."
     : typed < 1
       ? "The wager has to be at least 1 chip."
-      : typed > me.balance
-        ? `You only have ${fmt(me.balance)} chips.`
+      : typed > maxWager
+        ? `With the admin fee, the most you can wager is ${fmt(maxWager)}.`
         : null;
   const effectiveWager = wagerError ? 0 : typed;
-  const setWager = (n: number) => setWagerText(String(Math.max(1, Math.min(n, me.balance))));
+  const fee = tableFee(effectiveWager, rules.feeRate);
+  const setWager = (n: number) => setWagerText(String(Math.max(1, Math.min(n, maxWager))));
   const step = effectiveWager >= 1000 ? 100 : 10;
   const broke = me.balance < MIN_WAGER && !live;
-  const canWager = me.balance > 0 || live;
+  const canWager = maxWager >= 1 || live;
 
   const play = () => {
     if (startRound(activeMode, effectiveWager)) {
@@ -99,9 +109,9 @@ export default function Lobby() {
           {lockedMode && " The house deck sets the table for this round."}
         </p>
 
-        <div role="radiogroup" aria-label="Game mode" className="mt-8 grid gap-4 sm:grid-cols-3">
-          {MODES.map((m) => {
-            const c = MODE_COPY[m];
+        <div role="radiogroup" aria-label="Table" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {CHOICES.map((m) => {
+            const c = TABLE_COPY[m];
             const selected = activeMode === m;
             const disabled = !!lockedMode && lockedMode !== m;
             return (
@@ -128,7 +138,7 @@ export default function Lobby() {
                   />
                 )}
                 <span className="felt-print">{c.structure}</span>
-                <span className="mt-1 font-display text-2xl font-bold">{c.name}</span>
+                <span className="mt-1 font-display text-2xl font-bold lg:text-xl">{c.name}</span>
                 <ModeDiagram mode={m} className={`my-4 h-20 w-full ${selected ? "text-brass-hi" : "text-felt-print/70"}`} />
                 <span className="text-sm font-semibold text-card/90">{c.rule}</span>
                 <span className="mt-1 text-sm text-card/60">{c.pitch}</span>
@@ -139,10 +149,10 @@ export default function Lobby() {
 
         <section className="mt-6 rounded-2xl bg-black/15 p-5 sm:p-6" aria-labelledby="how-h">
           <h2 id="how-h" className="felt-print">
-            How {MODE_COPY[activeMode].name.toLowerCase()} plays
+            {activeMode === "random" ? "How a random table works" : `How ${TABLE_COPY[activeMode].name.toLowerCase()} plays`}
           </h2>
           <ol className="mt-3 grid gap-3 sm:grid-cols-3">
-            {MODE_COPY[activeMode].how.map((line, i) => (
+            {TABLE_COPY[activeMode].how.map((line, i) => (
               <li key={i} className="flex gap-3 text-sm text-card/80">
                 <span className="font-display text-xl font-bold leading-none text-brass">{i + 1}</span>
                 <span>{line}</span>
@@ -150,16 +160,20 @@ export default function Lobby() {
             ))}
           </ol>
           <p className="mt-4 border-t border-felt-print/10 pt-3 text-sm text-card/60">
-            <span className="font-semibold text-brass-hi">Tip:</span> {MODE_COPY[activeMode].tip}
+            <span className="font-semibold text-brass-hi">Tip:</span> {TABLE_COPY[activeMode].tip}
           </p>
         </section>
+
+        <TableRules rules={rules} wager={effectiveWager || 0} disabled={live} />
 
         <section className="mt-10" aria-labelledby="wager-h">
           <div className="flex items-baseline justify-between gap-4">
             <h2 id="wager-h" className="font-display text-2xl font-bold">
               Place your wager
             </h2>
-            <span className="text-sm text-card/60 tnum">balance {fmt(me.balance)}</span>
+            <span className="text-sm text-card/60 tnum">
+              balance {fmt(me.balance)} · max wager {fmt(maxWager)}
+            </span>
           </div>
 
           {broke && (
@@ -180,7 +194,7 @@ export default function Lobby() {
                     key={w}
                     value={w}
                     selected={effectiveWager === w}
-                    disabled={w > me.balance || live}
+                    disabled={w > maxWager || live}
                     onClick={() => {
                       setWager(w);
                       sfx.chip();
@@ -190,10 +204,10 @@ export default function Lobby() {
                 <Chip
                   value="all"
                   label="ALL"
-                  selected={effectiveWager === me.balance && !WAGERS.includes(me.balance as never)}
+                  selected={effectiveWager === maxWager && !WAGERS.includes(maxWager as never)}
                   disabled={live}
                   onClick={() => {
-                    setWager(me.balance);
+                    setWager(maxWager);
                     sfx.chip();
                   }}
                 />
@@ -227,7 +241,7 @@ export default function Lobby() {
                   />
                   <button
                     type="button"
-                    disabled={live || effectiveWager >= me.balance}
+                    disabled={live || effectiveWager >= maxWager}
                     onClick={() => (setWager((effectiveWager || 0) + step), sfx.chip())}
                     aria-label={`Raise the wager by ${step}`}
                     className="grid size-11 place-items-center text-xl text-card/70 hover:text-card disabled:opacity-30"
@@ -236,7 +250,7 @@ export default function Lobby() {
                   </button>
                 </div>
                 <span id="wager-hint" className={`text-sm ${wagerError ? "text-loss-hi" : "text-card/45"}`} aria-live="polite">
-                  {wagerError ?? `Any amount from 1 to ${fmt(me.balance)}`}
+                  {wagerError ?? `Any amount from 1 to ${fmt(maxWager)}`}
                 </span>
               </div>
               <div className="mt-6 flex flex-wrap items-center gap-4">
@@ -246,7 +260,7 @@ export default function Lobby() {
                   disabled={live || !!wagerError}
                   className="plaque plaque-brass min-w-60 py-4 text-sm"
                 >
-                  {wagerError ? "Deal me in" : `Deal me in · ${fmt(effectiveWager)}`}
+                  {wagerError ? "Deal me in" : `Deal me in · ${fmt(effectiveWager)}${fee ? ` + ${fmt(fee)} fee` : ""}`}
                 </button>
                 {deckName && (
                   <button

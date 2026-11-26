@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Clocks } from "@/components/play/Clocks";
 import { LinearTable } from "@/components/play/LinearTable";
 import { RecursionTable } from "@/components/play/RecursionTable";
 import { Summary } from "@/components/play/Summary";
@@ -16,7 +17,9 @@ import { opSign } from "@/lib/engine/ops";
 import { legal, type Action, type Round } from "@/lib/engine/round";
 import { MODE_COPY } from "@/lib/modes";
 import { sfx } from "@/lib/sfx";
-import { useGame, useMe, useRound } from "@/lib/store";
+import { decodeDeck } from "@/lib/engine/deck-code";
+import { maxAffordable } from "@/lib/engine/rules";
+import { rulesFor, useGame, useMe, useRound } from "@/lib/store";
 
 const ANIM_MS = 450;
 const UNWIND_MS = 850;
@@ -79,6 +82,23 @@ export default function Play() {
     return () => clearTimeout(t);
   }, [round, act]);
 
+  // Clocks: fire a timeout when the nearest deadline passes. Deadlines live in the
+  // saved round, so a reload picks up the same clock instead of resetting it.
+  useEffect(() => {
+    if (!round || round.phase === "done") return;
+    const pending = [round.pickDeadline, round.openDeadline].filter((d): d is number => d !== null);
+    if (pending.length === 0) return;
+    const t = setTimeout(
+      () => {
+        const prev = round;
+        const next = act({ type: "timeout" });
+        if (next && next !== prev) soundFor({ type: "timeout" }, prev, next);
+      },
+      Math.max(0, Math.min(...pending) - Date.now()) + 40,
+    );
+    return () => clearTimeout(t);
+  }, [round, act]);
+
   // Let the final flip land before the results slide up.
   const done = round?.phase === "done";
   useEffect(() => {
@@ -90,13 +110,20 @@ export default function Play() {
     return () => clearTimeout(t);
   }, [done]);
 
+  const maxWager = useGame((s) => {
+    const p = s.active ? s.profiles[s.active] : null;
+    if (!p) return 0;
+    return maxAffordable(p.balance, rulesFor(s, s.deckCode ? decodeDeck(s.deckCode) : null).feeRate);
+  });
+
   const again = useCallback(() => {
     if (!round || !me) return;
-    const wager = Math.min(round.wager, me.balance);
+    const wager = Math.min(round.wager, maxWager);
     clearRound();
-    if (wager >= 1 && startRound(round.mode, wager)) sfx.chip();
+    // A random table draws again; otherwise sit at the same one.
+    if (wager >= 1 && startRound(round.randomTable ? "random" : round.mode, wager)) sfx.chip();
     else router.push("/lobby");
-  }, [round, me, clearRound, startRound, router]);
+  }, [round, me, maxWager, clearRound, startRound, router]);
 
   const toLobby = useCallback(() => {
     clearRound();
@@ -159,6 +186,7 @@ export default function Play() {
           <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="felt-print">
+                {round.randomTable && <span className="text-brass-hi">Drawn at random · </span>}
                 {copy.structure} · {copy.rule}
               </p>
               <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{copy.name}</h1>
@@ -167,6 +195,13 @@ export default function Play() {
               {done ? "Lobby" : "Step away"}
             </Link>
           </header>
+
+          {/* Sticky on phones so the clock stays in view while scrolling to the buttons. */}
+          {(round.pickDeadline !== null || round.openDeadline !== null) && (
+            <div className="sticky top-14 z-20 -mx-4 mb-6 border-b border-felt-print/10 bg-felt-deep px-4 py-2.5 lg:static lg:mx-0 lg:rounded-xl lg:border-0 lg:bg-black/20">
+              <Clocks round={round} />
+            </div>
+          )}
 
           {round.mode === "recursion" ? (
             <RecursionTable round={round} can={can} locked={locked} dispatch={dispatch} />
@@ -199,7 +234,8 @@ export default function Play() {
             key="summary"
             round={round}
             balance={me.balance}
-            canAgain={me.balance > 0}
+            canAgain={maxWager >= 1}
+            maxWager={maxWager}
             onAgain={again}
             onLobby={toLobby}
             onHide={() => setShowSummary(false)}

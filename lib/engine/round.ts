@@ -1,7 +1,8 @@
-import { dealBoard, dealOffer, STREAM_OVERFLOW, type Card } from "./deal";
+import { dealBoard, dealOffer, STREAM_AUTO, STREAM_OVERFLOW, type Card } from "./deal";
 import { DEFAULT_MAX_PICKS, type DeckPreset, type Mode } from "./deck-code";
 import { applyOp, fmt, formatOp } from "./ops";
 import { rngFor } from "./rng";
+import type { Timers } from "./rules";
 import { simulate } from "./whatif";
 
 export const MAX_DEPTH = 8;
@@ -57,6 +58,20 @@ export interface Round {
   /** Queue only: an extra enqueue is allowed once per dequeue. */
   canEnqueue: boolean;
 
+  /** Admin fee paid on top of the wager when the round started. Never returned. */
+  fee: number;
+  /** The table was drawn at random in the lobby. */
+  randomTable: boolean;
+  pickSeconds: number;
+  openSeconds: number;
+  /** Epoch ms when each clock runs out; null while that clock isn't running. */
+  pickDeadline: number | null;
+  openDeadline: number | null;
+  /** The pick clock chose cards for the player. */
+  autoPicked: boolean;
+  /** The open clock ended the round (cash out / return) instead of the player. */
+  timedOut: boolean;
+
   /** Recursion */
   depth: number;
   offer: Card[] | null;
@@ -75,15 +90,28 @@ export type Action =
   | { type: "choose"; index: number }
   | { type: "dive" }
   | { type: "return" }
-  | { type: "unwind" };
+  | { type: "unwind" }
+  /** Sent by the UI when a clock hits zero. Ignored if no deadline has passed. */
+  | { type: "timeout" };
 
 export const PEEK_RATE = 0.25;
 export const peekCost = (wager: number) => Math.max(1, Math.ceil(wager * PEEK_RATE));
 export const enqueueFee = (wager: number) => Math.max(1, Math.ceil(wager * 0.05));
 export const overflowRisk = (depth: number) => (depth <= 1 ? 0 : Math.min(1, (depth - 1) * 0.08));
 
-export function createRound(opts: { mode: Mode; wager: number; seed: number; preset: DeckPreset | null }): Round {
-  const { mode, wager, seed, preset } = opts;
+const clock = (seconds: number, now: number) => (seconds > 0 ? now + seconds * 1000 : null);
+
+export function createRound(opts: {
+  mode: Mode;
+  wager: number;
+  seed: number;
+  preset: DeckPreset | null;
+  fee?: number;
+  timers?: Timers;
+  randomTable?: boolean;
+  now?: number;
+}): Round {
+  const { mode, wager, seed, preset, fee = 0, timers = { pick: 0, open: 0 }, randomTable = false, now = 0 } = opts;
   const maxPicks = preset?.maxPicks ?? DEFAULT_MAX_PICKS;
   const base: Round = {
     mode,
@@ -104,6 +132,14 @@ export function createRound(opts: { mode: Mode; wager: number; seed: number; pre
     fees: 0,
     peekUsed: false,
     canEnqueue: false,
+    fee,
+    randomTable,
+    pickSeconds: timers.pick,
+    openSeconds: timers.open,
+    pickDeadline: clock(timers.pick, now),
+    openDeadline: null,
+    autoPicked: false,
+    timedOut: false,
     depth: 1,
     offer: null,
     overflowDepth: null,
@@ -178,7 +214,7 @@ export function legal(r: Round): Legal {
   };
 }
 
-export function reduce(r: Round, a: Action): Round {
+export function reduce(r: Round, a: Action, now: number = Date.now()): Round {
   const can = legal(r);
   switch (a.type) {
     case "pick": {
@@ -192,11 +228,11 @@ export function reduce(r: Round, a: Action): Round {
         picks: [...r.picks, card],
       };
       next = log(next, { kind: "push", call: `${r.mode === "stack" ? "push" : "enqueue"}(#${card.slot})` });
-      if (next.structure.length >= next.maxPicks) next = startResolve(next);
+      if (next.structure.length >= next.maxPicks) next = startResolve(next, now);
       return next;
     }
     case "deal":
-      return can.deal ? startResolve(r) : r;
+      return can.deal ? startResolve(r, now) : r;
 
     case "take": {
       if (!can.take) return r;
@@ -268,6 +304,8 @@ export function reduce(r: Round, a: Action): Round {
           structure: [...r.structure, card],
           picks: [...r.picks, card],
           revealed: [...r.revealed, card.id],
+          pickDeadline: null,
+          openDeadline: r.structure.length === 0 ? clock(r.openSeconds, now) : r.openDeadline,
         },
         { kind: "call", call: `dive(${r.depth})`, result: `frame holds ${formatOp(card.op)}` },
       );
@@ -285,7 +323,7 @@ export function reduce(r: Round, a: Action): Round {
         return finish(next, "overflow");
       }
       return log(
-        { ...r, depth, offer: dealOffer(r.seed, depth, r.preset) },
+        { ...r, depth, offer: dealOffer(r.seed, depth, r.preset), pickDeadline: clock(r.pickSeconds, now) },
         { kind: "call", call: `dive(${depth})`, result: "choose a card" },
       );
     }
@@ -293,7 +331,7 @@ export function reduce(r: Round, a: Action): Round {
     case "return":
       if (!can.return) return r;
       return log(
-        { ...r, phase: "resolve", pot: r.wager },
+        { ...r, phase: "resolve", pot: r.wager, pickDeadline: null, openDeadline: null },
         { kind: "base", call: `base case`, result: `return ${fmt(r.wager)}` },
       );
 
@@ -320,12 +358,71 @@ export function reduce(r: Round, a: Action): Round {
       if (next.structure.length === 0) return finish(next, "cashed");
       return next;
     }
+
+    case "timeout":
+      return onTimeout(r, now);
   }
 }
 
-function startResolve(r: Round): Round {
+/**
+ * A clock ran out.
+ * Pick clock: stack/queue fill up to the minimum with random cards and deal;
+ * recursion takes a random card from the offer.
+ * Open clock: stack/queue cash out at the current pot; recursion returns.
+ */
+function onTimeout(r: Round, now: number): Round {
+  if (r.phase === "done") return r;
+  const linear = r.mode !== "recursion";
+  const openUp = r.openDeadline !== null && now >= r.openDeadline;
+  const pickUp = r.pickDeadline !== null && now >= r.pickDeadline;
+
+  if (openUp && !linear && r.phase === "build" && r.structure.length > 0) {
+    const next = log(
+      { ...r, offer: null, phase: "resolve", pot: r.wager, pickDeadline: null, openDeadline: null, timedOut: true },
+      { kind: "info", call: "time's up", result: "returning now" },
+    );
+    return log(next, { kind: "base", call: "base case", result: `return ${fmt(r.wager)}` });
+  }
+  if (openUp && linear && r.phase === "resolve") {
+    const next = log({ ...r, timedOut: true }, { kind: "info", call: "time's up", result: `cash out ${fmt(r.pot)}` });
+    return finish(next, "cashed");
+  }
+  if (pickUp && r.phase === "build") {
+    if (!linear && r.offer) {
+      const index = Math.floor(rngFor(r.seed, STREAM_AUTO + r.depth)() * r.offer.length);
+      const next = log({ ...r, autoPicked: true }, { kind: "info", call: "time's up", result: `picked card ${index + 1} for you` });
+      return reduce(next, { type: "choose", index }, now);
+    }
+    if (linear) {
+      const rand = rngFor(r.seed, STREAM_AUTO);
+      let next: Round = { ...r, autoPicked: true };
+      const auto: number[] = [];
+      while (next.structure.length < next.minPicks) {
+        const avail = boardAvailable(next);
+        if (avail.length === 0) break;
+        const card = avail[Math.floor(rand() * avail.length)];
+        auto.push(card.slot);
+        next = { ...next, taken: [...next.taken, card.id], structure: [...next.structure, card], picks: [...next.picks, card] };
+        next = log(next, { kind: "push", call: `${r.mode === "stack" ? "push" : "enqueue"}(#${card.slot})`, result: "auto" });
+      }
+      if (next.structure.length === 0) return r;
+      next = log(next, {
+        kind: "info",
+        call: "time's up",
+        result: auto.length ? `picked #${auto.join(", #")} for you` : "dealing your cards",
+      });
+      return startResolve(next, now);
+    }
+  }
+  return r;
+}
+
+function startResolve(r: Round, now: number): Round {
   const head = r.mode === "stack" ? "top" : "front";
-  return log({ ...r, phase: "resolve" }, { kind: "info", call: `deal`, result: `${r.structure.length} cards · ${head} first` });
+  return log(
+    { ...r, phase: "resolve", pickDeadline: null, openDeadline: clock(r.openSeconds, now) },
+    { kind: "info", call: `deal`, result: `${r.structure.length} cards · ${head} first` },
+  );
 }
 
 function finish(r: Round, outcome: Outcome): Round {
@@ -336,7 +433,7 @@ function finish(r: Round, outcome: Outcome): Round {
       : outcome === "bust"
         ? { kind: "bust", call: "bust", result: "pot hit 0" }
         : { kind: "bust", call: "crash", result: `overflow at depth ${r.overflowDepth}` };
-  return log({ ...r, phase: "done", outcome, pot }, line);
+  return log({ ...r, phase: "done", outcome, pot, pickDeadline: null, openDeadline: null }, line);
 }
 
 /** Chips returned to the player's balance when the round ends. */

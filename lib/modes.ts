@@ -1,4 +1,4 @@
-import type { Mode } from "./engine/deck-code";
+import type { Mode, TableChoice } from "./engine/deck-code";
 
 export interface ModeCopy {
   name: string;
@@ -53,5 +53,24 @@ export const MODE_COPY: Record<Mode, ModeCopy> = {
     tip: "Every level deeper adds 8% overflow risk. An overflow crashes the whole call stack.",
     takeVerb: "Unwind",
     putVerb: "call",
+  },
+};
+
+export type TableCopy = Pick<ModeCopy, "name" | "structure" | "rule" | "pitch" | "how" | "tip">;
+
+/** Lobby copy for every choice, including the random table. */
+export const TABLE_COPY: Record<TableChoice, TableCopy> = {
+  ...MODE_COPY,
+  random: {
+    name: "Surprise me",
+    structure: "Random",
+    rule: "Any of the three",
+    pitch: "The house draws the table when you deal.",
+    how: [
+      "When you deal, the house draws a stack, a queue or a recursion table at random.",
+      "You find out which one when you sit down. The header says it was drawn at random.",
+      "The fee, the clocks and your wager work the same as on any table.",
+    ],
+    tip: "Good practice: you have to recognise the structure from how the cards move.",
   },
 };

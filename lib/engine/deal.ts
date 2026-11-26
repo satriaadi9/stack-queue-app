@@ -17,6 +17,7 @@ const makeCard = (id: string, slot: number, op: Op): Card => ({ id, slot, op, ti
 export const STREAM_BOARD = 1;
 export const STREAM_OFFER = 100; // + depth
 export const STREAM_OVERFLOW = 200; // + depth
+export const STREAM_AUTO = 300; // + depth: cards picked by the clock
 
 /** The 12 face-down cards for stack & queue rounds. */
 export function dealBoard(seed: number, preset: DeckPreset | null): Card[] {

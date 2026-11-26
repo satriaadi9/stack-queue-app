@@ -2,9 +2,19 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { decodeDeck, type Mode } from "./engine/deck-code";
+import { decodeDeck, MODES, type DeckPreset, type TableChoice } from "./engine/deck-code";
 import { newSeed } from "./engine/rng";
 import { createRound, payout, reduce, type Action, type Round } from "./engine/round";
+import {
+  clampTimer,
+  DEFAULT_FEE_RATE,
+  DEFAULT_TIMER_PRESET,
+  maxAffordable,
+  tableFee,
+  TIMER_PRESETS,
+  type TimerPreset,
+  type Timers,
+} from "./engine/rules";
 
 export const START_BALANCE = 1000;
 export const LOAN_AMOUNT = 500;
@@ -14,32 +24,35 @@ export interface Profile {
   initials: string;
   balance: number;
   best: number; // highest balance ever held
-  biggestWin: number; // biggest single-round net gain
+  biggestWin: number; // biggest single-round net gain, after the fee
   rounds: number;
   wins: number;
   loans: number;
   lastPlayed: number;
-  /** The round on this player's table. Wager already left the balance. */
+  /** The round on this player's table. Wager and fee already left the balance. */
   round: Round | null;
 }
 
 interface State {
   profiles: Record<string, Profile>;
   active: string | null;
-  lastMode: Mode;
+  lastMode: TableChoice;
   lastWager: number;
   muted: boolean;
+  timerPreset: TimerPreset;
+  customTimers: Timers;
   /** Raw code of the house deck in play, if any. */
   deckCode: string | null;
   deckName: string | null;
 
   login: (initials: string) => void;
   logout: () => void;
-  startRound: (mode: Mode, wager: number) => boolean;
+  startRound: (choice: TableChoice, wager: number) => boolean;
   act: (a: Action) => Round | null;
   clearRound: () => void;
   takeLoan: () => void;
   setDeck: (code: string | null) => boolean;
+  setTimers: (preset: TimerPreset, custom?: Timers) => void;
   toggleMute: () => void;
   forget: (initials: string) => void;
 }
@@ -57,6 +70,31 @@ export const newProfile = (initials: string): Profile => ({
 });
 
 export const isLive = (r: Round | null | undefined): r is Round => !!r && r.phase !== "done";
+
+export interface TableRules {
+  feeRate: number;
+  timers: Timers;
+  /** Set by a house deck, so the player can't change them. */
+  feeLocked: boolean;
+  timersLocked: boolean;
+}
+
+/** The rules that apply to the next round: the house deck's, else the player's own. */
+export function rulesFor(
+  s: Pick<State, "timerPreset" | "customTimers">,
+  preset: DeckPreset | null,
+): TableRules {
+  const own = s.timerPreset === "custom" ? s.customTimers : TIMER_PRESETS[s.timerPreset];
+  return {
+    feeRate: preset?.feeRate ?? DEFAULT_FEE_RATE,
+    timers: preset?.timers ?? { pick: own.pick, open: own.open },
+    feeLocked: preset?.feeRate != null,
+    timersLocked: !!preset?.timers,
+  };
+}
+
+/** Pick a table for "Surprise me", using crypto randomness. */
+const drawMode = () => MODES[newSeed() % MODES.length];
 
 export const useGame = create<State>()(
   persist(
@@ -76,6 +114,8 @@ export const useGame = create<State>()(
         lastMode: "stack",
         lastWager: 50,
         muted: false,
+        timerPreset: DEFAULT_TIMER_PRESET,
+        customTimers: { pick: 20, open: 30 },
         deckCode: null,
         deckName: null,
 
@@ -88,16 +128,29 @@ export const useGame = create<State>()(
 
         logout: () => set({ active: null }),
 
-        startRound: (mode, wager) => {
+        startRound: (choice, wager) => {
           const s = get();
           const me = s.active ? s.profiles[s.active] : null;
           if (!me || isLive(me.round)) return false;
-          if (!Number.isInteger(wager) || wager < 1 || wager > me.balance) return false;
           const preset = s.deckCode ? decodeDeck(s.deckCode) : null;
-          const round = createRound({ mode: preset?.mode ?? mode, wager, seed: newSeed(), preset });
-          set({ lastMode: mode, lastWager: wager });
-          // The wager leaves the balance immediately, so reloading can't dodge a bust.
-          patchMe((p) => ({ round, balance: p.balance - wager, lastPlayed: Date.now() }));
+          const rules = rulesFor(s, preset);
+          if (!Number.isInteger(wager) || wager < 1 || wager > maxAffordable(me.balance, rules.feeRate)) return false;
+          const wanted = preset?.mode ?? choice;
+          const mode = wanted === "random" ? drawMode() : wanted;
+          const fee = tableFee(wager, rules.feeRate);
+          const round = createRound({
+            mode,
+            wager,
+            seed: newSeed(),
+            preset,
+            fee,
+            timers: rules.timers,
+            randomTable: wanted === "random",
+            now: Date.now(),
+          });
+          set({ lastMode: choice, lastWager: wager });
+          // Wager and fee leave the balance immediately, so reloading can't dodge a bust.
+          patchMe((p) => ({ round, balance: p.balance - wager - fee, lastPlayed: Date.now() }));
           return true;
         },
 
@@ -106,19 +159,20 @@ export const useGame = create<State>()(
           patchMe((me) => {
             const prev = me.round;
             if (!prev) return null;
-            const next = reduce(prev, a);
+            const next = reduce(prev, a, Date.now());
             result = next;
             if (next === prev) return null;
             if (next.phase === "done" && prev.phase !== "done") {
               const won = payout(next);
               const balance = me.balance + won;
+              const cost = next.wager + next.fee;
               return {
                 round: next,
                 balance,
                 best: Math.max(me.best, balance),
-                biggestWin: Math.max(me.biggestWin, won - next.wager),
+                biggestWin: Math.max(me.biggestWin, won - cost),
                 rounds: me.rounds + 1,
-                wins: me.wins + (won > next.wager ? 1 : 0),
+                wins: me.wins + (won > cost ? 1 : 0),
                 lastPlayed: Date.now(),
               };
             }
@@ -145,6 +199,14 @@ export const useGame = create<State>()(
           return true;
         },
 
+        setTimers: (preset, custom) =>
+          set((s) => ({
+            timerPreset: preset,
+            customTimers: custom
+              ? { pick: clampTimer("pick", custom.pick), open: clampTimer("open", custom.open) }
+              : s.customTimers,
+          })),
+
         toggleMute: () => set((s) => ({ muted: !s.muted })),
 
         forget: (initials) =>
@@ -157,9 +219,32 @@ export const useGame = create<State>()(
     },
     {
       name: "stack-and-deal",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
+      // v1 rounds have no fee or clocks: give them none, so they finish as before.
+      migrate: (persisted, version) => {
+        const s = persisted as State;
+        if (version < 2 && s?.profiles) {
+          for (const p of Object.values(s.profiles)) {
+            if (p.round) {
+              p.round = {
+                fee: 0,
+                randomTable: false,
+                pickSeconds: 0,
+                openSeconds: 0,
+                pickDeadline: null,
+                openDeadline: null,
+                timedOut: false,
+                autoPicked: false,
+                peekUsed: false,
+                ...(p.round as Partial<Round>),
+              } as Round;
+            }
+          }
+        }
+        return s;
+      },
     },
   ),
 );

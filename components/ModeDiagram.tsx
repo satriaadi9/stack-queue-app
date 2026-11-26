@@ -1,8 +1,20 @@
-import type { Mode } from "@/lib/engine/deck-code";
+import type { TableChoice } from "@/lib/engine/deck-code";
 
 /** Small line drawings printed on the felt: how cards move in each structure. */
-export function ModeDiagram({ mode, className = "" }: { mode: Mode; className?: string }) {
+export function ModeDiagram({ mode, className = "" }: { mode: TableChoice; className?: string }) {
   const stroke = "currentColor";
+  if (mode === "random") {
+    // Three face-down cards, one lifted: the house picks for you.
+    return (
+      <svg viewBox="0 0 120 90" className={className} fill="none" stroke={stroke} strokeWidth="1.5" aria-hidden>
+        <rect x="22" y="28" width="22" height="32" rx="3" opacity="0.5" transform="rotate(-10 33 44)" />
+        <rect x="76" y="28" width="22" height="32" rx="3" opacity="0.5" transform="rotate(10 87 44)" />
+        <rect x="49" y="16" width="22" height="32" rx="3" />
+        <text x="60" y="38" fontSize="16" fontWeight="700" fill={stroke} stroke="none" textAnchor="middle">?</text>
+        <path d="M60 56v14m-5-5 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
+      </svg>
+    );
+  }
   if (mode === "stack") {
     return (
       <svg viewBox="0 0 120 90" className={className} fill="none" stroke={stroke} strokeWidth="1.5" aria-hidden>

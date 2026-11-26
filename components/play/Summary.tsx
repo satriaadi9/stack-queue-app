@@ -1,10 +1,11 @@
 "use client";
 
 import { motion } from "motion/react";
+import { OpText } from "@/components/table/Card";
 import { fmt } from "@/lib/engine/ops";
 import { seedLabel } from "@/lib/engine/rng";
 import type { Round } from "@/lib/engine/round";
-import { whatIf } from "@/lib/engine/whatif";
+import { simulate, whatIf } from "@/lib/engine/whatif";
 
 interface Props {
   round: Round;
@@ -13,10 +14,16 @@ interface Props {
   onLobby: () => void;
   onHide: () => void;
   canAgain: boolean;
+  maxWager: number;
 }
 
-export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: Props) {
-  const net = (round.outcome === "cashed" ? round.pot : 0) - round.wager;
+export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain, maxWager }: Props) {
+  const paid = round.outcome === "cashed" ? round.pot : 0;
+  const net = paid - round.wager - round.fee;
+
+  // Cards still in the stack/queue when the player cashed out, in the order they'd have come out.
+  const left = round.mode === "recursion" ? [] : round.mode === "stack" ? round.structure.slice().reverse() : round.structure;
+  const ifContinued = left.length > 0 && round.outcome === "cashed" ? simulate(round.pot, left.map((c) => c.op)) : null;
   const { lines, count, partial } = whatIf(round);
   const values = lines.map((l) => l.result.final);
   const best = Math.max(...values, 1);
@@ -59,11 +66,52 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
             </span>
             <span className="text-card/50"> · balance {fmt(balance)}</span>
           </p>
+          <p className="mt-0.5 text-xs text-card/45 tnum">
+            wager {fmt(round.wager)} · admin fee {fmt(round.fee)} · paid out {fmt(paid)}
+          </p>
+          {(round.timedOut || round.autoPicked) && (
+            <p className="mt-2 text-xs font-semibold text-brass-hi">
+              {round.timedOut
+                ? round.mode === "recursion"
+                  ? "The clock ran out, so the stack returned for you."
+                  : `The clock ran out, so you cashed out at ${fmt(round.pot)}.`
+                : "The pick clock ran out, so some cards were picked for you."}
+            </p>
+          )}
         </div>
         <button type="button" onClick={onHide} className="shrink-0 whitespace-nowrap text-xs font-semibold uppercase tracking-[0.16em] text-card/50 hover:text-card">
           View table
         </button>
       </div>
+
+      {ifContinued && (
+        <section className="mt-5 rounded-xl border border-felt-print/15 p-4" aria-labelledby="left-h">
+          <h3 id="left-h" className="felt-print">
+            Left unopened, next out first
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {left.map((c) => (
+              <span key={c.id} className="rounded-md bg-card px-2 py-1 text-ink">
+                <OpText op={c.op} className="text-base" />
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-sm text-card/70">
+            Opening them would have{" "}
+            {ifContinued.busted ? (
+              <span className="font-semibold text-loss-hi">busted you</span>
+            ) : (
+              <>
+                ended at{" "}
+                <span className={`font-semibold tnum ${ifContinued.final >= round.pot ? "text-brass-hi" : "text-loss-hi"}`}>
+                  {fmt(ifContinued.final)}
+                </span>
+              </>
+            )}
+            {ifContinued.busted || ifContinued.final < round.pot ? ". Good call stopping." : "."}
+          </p>
+        </section>
+      )}
 
       {lines.length > 0 && (
         <section className="mt-5 rounded-xl bg-black/25 p-4" aria-labelledby="whatif-h">
@@ -112,7 +160,7 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain }: 
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button type="button" onClick={onAgain} disabled={!canAgain} className="plaque plaque-brass flex-1 whitespace-nowrap">
-          Deal again · {fmt(Math.min(round.wager, balance))}
+          Deal again · {fmt(Math.min(round.wager, maxWager))}
           <span className="kbd">Enter</span>
         </button>
         <button type="button" onClick={onLobby} className="plaque plaque-ghost flex-1 whitespace-nowrap">
