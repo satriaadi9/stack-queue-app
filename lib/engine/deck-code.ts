@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { opToAscii, parseOp, type Op } from "./ops";
-import { clampTimer, MAX_FEE_RATE, type Timers } from "./rules";
+import { clampStart, clampTimer, MAX_FEE_RATE, START_LIMITS, type Timers } from "./rules";
 
 export type Mode = "stack" | "queue" | "recursion";
 export const MODES: Mode[] = ["stack", "queue", "recursion"];
@@ -21,6 +21,8 @@ export interface DeckPreset {
   feeRate: number | null;
   /** Clocks for every player at this table. null = each player's own setting. */
   timers: Timers | null;
+  /** Chips a new player starts with at this table. null = the device's own setting. */
+  startChips: number | null;
 }
 
 export const DEFAULT_MAX_PICKS = 5;
@@ -37,6 +39,7 @@ const wire = z.object({
   // Added later; optional so older links keep working.
   f: z.number().int().min(0).max(MAX_FEE_RATE * 100).optional(),
   t: z.tuple([z.number().int().min(0).max(300), z.number().int().min(0).max(600)]).optional(),
+  c: z.number().int().min(START_LIMITS.min).max(START_LIMITS.max).optional(),
 });
 
 function toB64Url(text: string): string {
@@ -62,6 +65,7 @@ export function encodeDeck(p: DeckPreset): string {
     sh: p.shuffle ? 1 : 0,
     f: p.feeRate === null ? undefined : Math.round(p.feeRate * 100),
     t: p.timers ? [p.timers.pick, p.timers.open] : undefined,
+    c: p.startChips === null ? undefined : clampStart(p.startChips),
   };
   return toB64Url(JSON.stringify(payload));
 }
@@ -93,6 +97,7 @@ export function decodeDeck(code: string): DeckPreset | null {
       shuffle: w.sh === 1,
       feeRate: w.f === undefined ? null : w.f / 100,
       timers: w.t ? { pick: clampTimer("pick", w.t[0]), open: clampTimer("open", w.t[1]) } : null,
+      startChips: w.c ?? null,
     };
   } catch {
     return null;

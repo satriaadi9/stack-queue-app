@@ -14,7 +14,7 @@ const run = (r: Round, ...actions: Action[]) => actions.reduce(reduce, r);
 /** A fully fixed deck so outcomes are exact. Slot n holds ops[n-1]. */
 function deck(ops: string[], extra: Partial<DeckPreset> = {}): DeckPreset {
   const slots = Array.from({ length: BOARD_SIZE }, (_, i) => (ops[i] ? op(ops[i]) : op("+1")));
-  return { name: "test", mode: null, slots, maxPicks: 5, shuffle: false, feeRate: null, timers: null, ...extra };
+  return { name: "test", mode: null, slots, maxPicks: 5, shuffle: false, feeRate: null, timers: null, startChips: null, ...extra };
 }
 
 describe("ops", () => {

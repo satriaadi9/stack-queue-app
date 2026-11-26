@@ -40,3 +40,11 @@ export const TIMER_LIMITS = { pick: { min: 3, max: 300 }, open: { min: 3, max: 6
 
 export const clampTimer = (kind: keyof Timers, s: number) =>
   s <= 0 ? 0 : Math.round(Math.min(TIMER_LIMITS[kind].max, Math.max(TIMER_LIMITS[kind].min, s)));
+
+/** Chips a brand-new player sits down with. A host deck can set its own. */
+export const START_BALANCE = 1000;
+/** Quick picks for the starting chips. */
+export const START_PRESETS = [500, 1000, 2500, 5000, 10000] as const;
+export const START_LIMITS = { min: 10, max: 1_000_000 } as const;
+export const clampStart = (n: number) =>
+  Math.min(START_LIMITS.max, Math.max(START_LIMITS.min, Math.round(Number.isFinite(n) ? n : START_BALANCE)));

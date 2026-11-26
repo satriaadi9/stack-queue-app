@@ -1,5 +1,6 @@
 import { dealBoard, dealOffer, STREAM_AUTO, STREAM_OVERFLOW, type Card } from "./deal";
 import { DEFAULT_MAX_PICKS, type DeckPreset, type Mode } from "./deck-code";
+import { charmOf, weightsFor, type CharmId } from "./charms";
 import { applyOp, fmt, formatOp } from "./ops";
 import { rngFor } from "./rng";
 import type { Timers } from "./rules";
@@ -60,6 +61,9 @@ export interface Round {
 
   /** Admin fee paid on top of the wager when the round started. Never returned. */
   fee: number;
+  /** Luck charm bought for this round, and what it cost (paid up front, never returned). */
+  charm: CharmId;
+  charmCost: number;
   /** The table was drawn at random in the lobby. */
   randomTable: boolean;
   pickSeconds: number;
@@ -109,9 +113,13 @@ export function createRound(opts: {
   fee?: number;
   timers?: Timers;
   randomTable?: boolean;
+  charm?: CharmId;
+  charmCost?: number;
   now?: number;
 }): Round {
   const { mode, wager, seed, preset, fee = 0, timers = { pick: 0, open: 0 }, randomTable = false, now = 0 } = opts;
+  const charm = charmOf(opts.charm).id;
+  const weights = weightsFor(charm);
   const maxPicks = preset?.maxPicks ?? DEFAULT_MAX_PICKS;
   const base: Round = {
     mode,
@@ -133,6 +141,8 @@ export function createRound(opts: {
     peekUsed: false,
     canEnqueue: false,
     fee,
+    charm,
+    charmCost: charm === "none" ? 0 : (opts.charmCost ?? 0),
     randomTable,
     pickSeconds: timers.pick,
     openSeconds: timers.open,
@@ -146,10 +156,10 @@ export function createRound(opts: {
     trace: [],
   };
   if (mode === "recursion") {
-    return log({ ...base, offer: dealOffer(seed, 1, preset) }, { kind: "call", call: `dive(1)`, result: "choose a card" });
+    return log({ ...base, offer: dealOffer(seed, 1, preset, weights) }, { kind: "call", call: `dive(1)`, result: "choose a card" });
   }
   const verb = mode === "stack" ? "new Stack()" : "new Queue()";
-  return log({ ...base, board: dealBoard(seed, preset) }, { kind: "info", call: verb, result: `pot ${fmt(wager)}` });
+  return log({ ...base, board: dealBoard(seed, preset, weights) }, { kind: "info", call: verb, result: `pot ${fmt(wager)}` });
 }
 
 function log(r: Round, line: Omit<TraceLine, "id">): Round {
@@ -323,7 +333,7 @@ export function reduce(r: Round, a: Action, now: number = Date.now()): Round {
         return finish(next, "overflow");
       }
       return log(
-        { ...r, depth, offer: dealOffer(r.seed, depth, r.preset), pickDeadline: clock(r.pickSeconds, now) },
+        { ...r, depth, offer: dealOffer(r.seed, depth, r.preset, weightsFor(r.charm)), pickDeadline: clock(r.pickSeconds, now) },
         { kind: "call", call: `dive(${depth})`, result: "choose a card" },
       );
     }

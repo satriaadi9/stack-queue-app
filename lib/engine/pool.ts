@@ -55,12 +55,18 @@ export function tierOf(op: Op): Tier {
   return "common";
 }
 
-export function drawOp(rand: () => number): Op {
-  let roll = rand() * 100;
+export type Weights = Record<Tier, number>;
+export const BASE_WEIGHTS = Object.fromEntries(TIERS.map((t) => [t.tier, t.weight])) as Weights;
+
+/** Draw one op. `weights` may be on any scale (a charm reshapes them); they're normalised here. */
+export function drawOp(rand: () => number, weights: Weights = BASE_WEIGHTS): Op {
+  const total = TIERS.reduce((sum, t) => sum + weights[t.tier], 0);
+  let roll = rand() * total;
   for (const t of TIERS) {
-    if (roll < t.weight) return t.ops[Math.floor(rand() * t.ops.length)];
-    roll -= t.weight;
+    const w = weights[t.tier];
+    if (w > 0 && roll < w) return t.ops[Math.floor(rand() * t.ops.length)];
+    roll -= w;
   }
-  const last = TIERS[TIERS.length - 1];
+  const last = [...TIERS].reverse().find((t) => weights[t.tier] > 0) ?? TIERS[0];
   return last.ops[Math.floor(rand() * last.ops.length)];
 }

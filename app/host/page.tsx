@@ -7,7 +7,15 @@ import { useHydrated } from "@/components/Providers";
 import { Card } from "@/components/table/Card";
 import { Rail } from "@/components/table/Rail";
 import { BOARD_SIZE, decodeDeck, encodeDeck, MODES, type DeckPreset, type TableChoice } from "@/lib/engine/deck-code";
-import { DEFAULT_FEE_RATE, MAX_FEE_RATE, TIMER_LIMITS, TIMER_PRESETS } from "@/lib/engine/rules";
+import {
+  DEFAULT_FEE_RATE,
+  MAX_FEE_RATE,
+  START_LIMITS,
+  START_PRESETS,
+  TIMER_LIMITS,
+  TIMER_PRESETS,
+} from "@/lib/engine/rules";
+import { fmt } from "@/lib/engine/ops";
 import { formatOp, opToAscii, parseOp, type Op } from "@/lib/engine/ops";
 import { drawOp, tierDef, tierOf, TIERS } from "@/lib/engine/pool";
 import { mulberry32, newSeed } from "@/lib/engine/rng";
@@ -22,6 +30,7 @@ const emptyDeck = (): DeckPreset => ({
   shuffle: false,
   feeRate: null,
   timers: null,
+  startChips: null,
 });
 
 export default function Host() {
@@ -305,6 +314,13 @@ function HouseRules({ deck, onChange }: { deck: DeckPreset; onChange: (patch: Pa
   const [pickText, setPickText] = useState(String(deck.timers?.pick ?? 20));
   const [openText, setOpenText] = useState(String(deck.timers?.open ?? 30));
   const feeBad = feeText !== "" && !(/^\d{1,2}$/.test(feeText) && Number(feeText) <= MAX_FEE_RATE * 100);
+  const [chipsText, setChipsText] = useState(deck.startChips === null ? "" : String(deck.startChips));
+  const chipsOk = (t: string) => /^\d{1,7}$/.test(t) && Number(t) >= START_LIMITS.min && Number(t) <= START_LIMITS.max;
+  const setChips = (t: string) => {
+    setChipsText(t);
+    if (t === "") onChange({ startChips: null });
+    else if (chipsOk(t)) onChange({ startChips: Number(t) });
+  };
 
   const inRange = (t: string, k: "pick" | "open") =>
     /^\d{1,3}$/.test(t) && (Number(t) === 0 || (Number(t) >= TIMER_LIMITS[k].min && Number(t) <= TIMER_LIMITS[k].max));
@@ -408,6 +424,48 @@ function HouseRules({ deck, onChange }: { deck: DeckPreset; onChange: (patch: Pa
           {deck.timers === null
             ? "Each player picks their own clock in the lobby."
             : "Everyone at this table gets the same clock. 0 turns that clock off."}
+        </p>
+      </div>
+
+      <div className="sm:col-span-2">
+        <span className="felt-print">Starting chips</span>
+        <div className="mt-2 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Starting chips">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={deck.startChips === null}
+            onClick={() => setChips("")}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold ${deck.startChips === null ? "bg-card text-ink" : "bg-black/20 text-card/70 hover:bg-black/30"}`}
+          >
+            Each device&apos;s own
+          </button>
+          {START_PRESETS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={deck.startChips === n}
+              onClick={() => setChips(String(n))}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold tnum ${deck.startChips === n ? "bg-card text-ink" : "bg-black/20 text-card/70 hover:bg-black/30"}`}
+            >
+              {fmt(n)}
+            </button>
+          ))}
+          <input
+            inputMode="numeric"
+            value={chipsText}
+            placeholder="Custom"
+            aria-label="Starting chips amount"
+            aria-invalid={chipsText !== "" && !chipsOk(chipsText)}
+            onChange={(e) => setChips(e.target.value.replace(/[^\d]/g, "").slice(0, 7))}
+            className={`${field} w-32`}
+          />
+        </div>
+        <p className="mt-1.5 text-xs text-card/45">
+          {deck.startChips === null
+            ? "New players get whatever the device is set to (1,000 unless changed on the home page)."
+            : `Everyone new at this table starts with ${fmt(deck.startChips)} chips. Players already on a device keep theirs.`}{" "}
+          From {fmt(START_LIMITS.min)} to {fmt(START_LIMITS.max)}.
         </p>
       </div>
     </div>

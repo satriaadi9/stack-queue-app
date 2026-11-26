@@ -18,7 +18,8 @@ import { legal, type Action, type Round } from "@/lib/engine/round";
 import { MODE_COPY } from "@/lib/modes";
 import { sfx } from "@/lib/sfx";
 import { decodeDeck } from "@/lib/engine/deck-code";
-import { maxAffordable } from "@/lib/engine/rules";
+import { charmCost, charmOf } from "@/lib/engine/charms";
+import { maxAffordable, tableFee } from "@/lib/engine/rules";
 import { rulesFor, useGame, useMe, useRound } from "@/lib/store";
 
 const ANIM_MS = 450;
@@ -110,20 +111,23 @@ export default function Play() {
     return () => clearTimeout(t);
   }, [done]);
 
-  const maxWager = useGame((s) => {
-    const p = s.active ? s.profiles[s.active] : null;
-    if (!p) return 0;
-    return maxAffordable(p.balance, rulesFor(s, s.deckCode ? decodeDeck(s.deckCode) : null).feeRate);
-  });
+  const feeRate = useGame((s) => rulesFor(s, s.deckCode ? decodeDeck(s.deckCode) : null).feeRate);
+  const maxWager = me ? maxAffordable(me.balance, feeRate) : 0;
+  const againWager = round ? Math.min(round.wager, maxWager) : 0;
+  // Deal again keeps the charm while it's still affordable; otherwise plays without one.
+  const againCharm =
+    round && me && againWager + tableFee(againWager, feeRate) + charmCost(againWager, round.charm) <= me.balance
+      ? round.charm
+      : "none";
 
   const again = useCallback(() => {
     if (!round || !me) return;
-    const wager = Math.min(round.wager, maxWager);
     clearRound();
     // A random table draws again; otherwise sit at the same one.
-    if (wager >= 1 && startRound(round.randomTable ? "random" : round.mode, wager)) sfx.chip();
+    const table = round.randomTable ? "random" : round.mode;
+    if (againWager >= 1 && (startRound(table, againWager, againCharm) || startRound(table, againWager))) sfx.chip();
     else router.push("/lobby");
-  }, [round, me, maxWager, clearRound, startRound, router]);
+  }, [round, me, againWager, againCharm, clearRound, startRound, router]);
 
   const toLobby = useCallback(() => {
     clearRound();
@@ -187,6 +191,7 @@ export default function Play() {
             <div>
               <p className="felt-print">
                 {round.randomTable && <span className="text-brass-hi">Drawn at random · </span>}
+                {round.charm !== "none" && <span className="text-brass-hi">{charmOf(round.charm).name} · </span>}
                 {copy.structure} · {copy.rule}
               </p>
               <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{copy.name}</h1>
@@ -236,6 +241,7 @@ export default function Play() {
             balance={me.balance}
             canAgain={maxWager >= 1}
             maxWager={maxWager}
+            againCharm={againCharm === "none" ? null : charmOf(againCharm).name}
             onAgain={again}
             onLobby={toLobby}
             onHide={() => setShowSummary(false)}

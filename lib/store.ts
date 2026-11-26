@@ -2,26 +2,26 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { charmCost, charmsApply, isCharmId, type CharmId } from "./engine/charms";
 import { decodeDeck, MODES, type DeckPreset, type TableChoice } from "./engine/deck-code";
 import { newSeed } from "./engine/rng";
 import { createRound, payout, reduce, type Action, type Round } from "./engine/round";
 import {
+  clampStart,
   clampTimer,
   DEFAULT_FEE_RATE,
   DEFAULT_TIMER_PRESET,
   maxAffordable,
+  START_BALANCE,
+  START_LIMITS,
+  START_PRESETS,
   tableFee,
   TIMER_PRESETS,
   type TimerPreset,
   type Timers,
 } from "./engine/rules";
 
-export const START_BALANCE = 1000;
-/** Quick picks for how many chips a new player sits down with. */
-export const START_PRESETS = [500, 1000, 2500, 5000, 10000] as const;
-export const START_LIMITS = { min: 100, max: 1_000_000 } as const;
-export const clampStart = (n: number) =>
-  Math.min(START_LIMITS.max, Math.max(START_LIMITS.min, Math.round(Number.isFinite(n) ? n : START_BALANCE)));
+export { clampStart, START_BALANCE, START_LIMITS, START_PRESETS };
 export const LOAN_AMOUNT = 500;
 export const MIN_WAGER = 10;
 
@@ -43,6 +43,8 @@ interface State {
   active: string | null;
   lastMode: TableChoice;
   lastWager: number;
+  /** Charm chosen last time, offered again by "Deal again" when still affordable. */
+  lastCharm: CharmId;
   muted: boolean;
   /** Chips a brand-new player starts with. Existing players keep theirs. */
   startBalance: number;
@@ -54,7 +56,7 @@ interface State {
 
   login: (initials: string) => void;
   logout: () => void;
-  startRound: (choice: TableChoice, wager: number) => boolean;
+  startRound: (choice: TableChoice, wager: number, charm?: CharmId) => boolean;
   act: (a: Action) => Round | null;
   clearRound: () => void;
   takeLoan: () => void;
@@ -103,6 +105,15 @@ export function rulesFor(
   };
 }
 
+/** Everything a round cost up front: wager, admin fee and any charm. */
+export const roundCost = (r: Round) => r.wager + r.fee + (r.charmCost ?? 0);
+
+/** Chips a new player gets here: the house deck's amount, else this device's setting. */
+export function startChipsFor(s: Pick<State, "deckCode" | "startBalance">): number {
+  const preset = s.deckCode ? decodeDeck(s.deckCode) : null;
+  return clampStart(preset?.startChips ?? s.startBalance);
+}
+
 /** Pick a table for "Surprise me", using crypto randomness. */
 const drawMode = () => MODES[newSeed() % MODES.length];
 
@@ -123,6 +134,7 @@ export const useGame = create<State>()(
         active: null,
         lastMode: "stack",
         lastWager: 50,
+        lastCharm: "none",
         muted: false,
         startBalance: START_BALANCE,
         timerPreset: DEFAULT_TIMER_PRESET,
@@ -133,22 +145,27 @@ export const useGame = create<State>()(
         login: (initials) =>
           set((s) => {
             const key = initials.toUpperCase();
-            const profiles = s.profiles[key] ? s.profiles : { ...s.profiles, [key]: newProfile(key, clampStart(s.startBalance)) };
+            const profiles = s.profiles[key]
+              ? s.profiles
+              : { ...s.profiles, [key]: newProfile(key, startChipsFor(s)) };
             return { profiles, active: key };
           }),
 
         logout: () => set({ active: null }),
 
-        startRound: (choice, wager) => {
+        startRound: (choice, wager, charm = "none") => {
           const s = get();
           const me = s.active ? s.profiles[s.active] : null;
           if (!me || isLive(me.round)) return false;
           const preset = s.deckCode ? decodeDeck(s.deckCode) : null;
           const rules = rulesFor(s, preset);
+          if (!isCharmId(charm) || (charm !== "none" && !charmsApply(preset))) return false;
           if (!Number.isInteger(wager) || wager < 1 || wager > maxAffordable(me.balance, rules.feeRate)) return false;
+          const fee = tableFee(wager, rules.feeRate);
+          const luck = charmCost(wager, charm);
+          if (wager + fee + luck > me.balance) return false;
           const wanted = preset?.mode ?? choice;
           const mode = wanted === "random" ? drawMode() : wanted;
-          const fee = tableFee(wager, rules.feeRate);
           const round = createRound({
             mode,
             wager,
@@ -157,11 +174,13 @@ export const useGame = create<State>()(
             fee,
             timers: rules.timers,
             randomTable: wanted === "random",
+            charm,
+            charmCost: luck,
             now: Date.now(),
           });
-          set({ lastMode: choice, lastWager: wager });
-          // Wager and fee leave the balance immediately, so reloading can't dodge a bust.
-          patchMe((p) => ({ round, balance: p.balance - wager - fee, lastPlayed: Date.now() }));
+          set({ lastMode: choice, lastWager: wager, lastCharm: charm });
+          // Wager, fee and charm leave the balance immediately, so reloading can't dodge a bust.
+          patchMe((p) => ({ round, balance: p.balance - wager - fee - luck, lastPlayed: Date.now() }));
           return true;
         },
 
@@ -176,7 +195,7 @@ export const useGame = create<State>()(
             if (next.phase === "done" && prev.phase !== "done") {
               const won = payout(next);
               const balance = me.balance + won;
-              const cost = next.wager + next.fee;
+              const cost = roundCost(next);
               return {
                 round: next,
                 balance,
@@ -230,12 +249,12 @@ export const useGame = create<State>()(
         setStartBalance: (n) => set({ startBalance: clampStart(n) }),
 
         // Settings (clock, mute, house deck, starting chips) stay; only players go.
-        resetAll: () => set({ profiles: {}, active: null, lastWager: 50 }),
+        resetAll: () => set({ profiles: {}, active: null, lastWager: 50, lastCharm: "none" }),
       };
     },
     {
       name: "stack-and-deal",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
       // v1 rounds have no fee or clocks: give them none, so they finish as before.
@@ -257,6 +276,12 @@ export const useGame = create<State>()(
                 ...(p.round as Partial<Round>),
               } as Round;
             }
+          }
+        }
+        // v3 added luck charms: older rounds had none.
+        if (version < 3 && s?.profiles) {
+          for (const p of Object.values(s.profiles)) {
+            if (p.round) p.round = { charm: "none", charmCost: 0, ...(p.round as Partial<Round>) } as Round;
           }
         }
         return s;

@@ -4,12 +4,14 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { CharmPicker } from "@/components/CharmPicker";
 import { ModeDiagram } from "@/components/ModeDiagram";
 import { OddsTable } from "@/components/OddsTable";
 import { useHydrated } from "@/components/Providers";
 import { TableRules } from "@/components/TableRules";
 import { Chip } from "@/components/table/Chip";
 import { Rail } from "@/components/table/Rail";
+import { charmCost, charmOf, charmsApply, type CharmId } from "@/lib/engine/charms";
 import { decodeDeck, MODES, type TableChoice } from "@/lib/engine/deck-code";
 import { fmt } from "@/lib/engine/ops";
 import { WAGERS } from "@/lib/engine/round";
@@ -20,12 +22,14 @@ import { isLive, LOAN_AMOUNT, MIN_WAGER, rulesFor, useGame, useMe } from "@/lib/
 
 const CHOICES: TableChoice[] = [...MODES, "random"];
 
-/** One decision per screen: table, then rules, then money. */
+/** One decision per screen: table, then rules, then money, then (optionally) luck. */
 const STEPS = [
   { title: "Choose your table", short: "Table" },
   { title: "Table rules", short: "Clock & fee" },
   { title: "Place your wager", short: "Wager" },
+  { title: "Buy some luck?", short: "Luck" },
 ] as const;
+const LAST = STEPS.length - 1;
 
 const clockLabel = (t: Timers) => (t.pick === 0 && t.open === 0 ? "No clock" : `${t.pick || "∞"}s pick · ${t.open || "∞"}s open`);
 
@@ -35,6 +39,7 @@ export default function Lobby() {
   const me = useMe();
   const lastMode = useGame((s) => s.lastMode);
   const lastWager = useGame((s) => s.lastWager);
+  const lastCharm = useGame((s) => s.lastCharm);
   const deckCode = useGame((s) => s.deckCode);
   const deckName = useGame((s) => s.deckName);
   const setDeck = useGame((s) => s.setDeck);
@@ -51,6 +56,7 @@ export default function Lobby() {
   const [mode, setMode] = useState<TableChoice>(lastMode);
   // Kept as text so the field can be empty or half-typed while editing.
   const [wagerText, setWagerText] = useState<string>(String(lastWager));
+  const [charm, setCharm] = useState<CharmId>(lastCharm);
   const [step, setStep] = useState(0);
   const [reached, setReached] = useState(0);
 
@@ -99,8 +105,14 @@ export default function Lobby() {
   const broke = me.balance < MIN_WAGER && !live;
   const canWager = maxWager >= 1 || live;
 
+  // A charm needs random cards to work on, and has to fit in the balance with the wager and fee.
+  const charmsOn = charmsApply(preset);
+  const budget = me.balance - effectiveWager - fee;
+  const usedCharm: CharmId = charmsOn && !wagerError && charmCost(effectiveWager, charm) <= budget ? charm : "none";
+  const luck = charmCost(effectiveWager, usedCharm);
+
   const play = () => {
-    if (startRound(activeMode, effectiveWager)) {
+    if (startRound(activeMode, effectiveWager, usedCharm)) {
       sfx.chip();
       router.push("/play");
     }
@@ -111,6 +123,7 @@ export default function Lobby() {
     TABLE_COPY[activeMode].name,
     `${clockLabel(rules.timers)} · ${Math.round(rules.feeRate * 100)}% fee`,
     wagerError ? "—" : `${fmt(effectiveWager)} chips`,
+    charmOf(usedCharm).name,
   ];
 
   return (
@@ -293,7 +306,7 @@ export default function Lobby() {
                             value={wagerText}
                             disabled={live}
                             onChange={(e) => setWagerText(e.target.value.replace(/[^\d]/g, "").slice(0, 9))}
-                            onKeyDown={(e) => e.key === "Enter" && !wagerError && play()}
+                            onKeyDown={(e) => e.key === "Enter" && !wagerError && goTo(3)}
                             aria-invalid={!!wagerError}
                             aria-describedby="wager-hint"
                             className="w-28 bg-transparent py-2 text-center text-xl font-bold text-card tnum outline-none focus-visible:outline-none"
@@ -318,15 +331,15 @@ export default function Lobby() {
                       </div>
                     </div>
 
-                    <Receipt
-                      table={TABLE_COPY[activeMode].name}
-                      clock={clockLabel(rules.timers)}
-                      wager={effectiveWager}
-                      fee={fee}
-                      feePct={Math.round(rules.feeRate * 100)}
-                      after={me.balance - effectiveWager - fee}
-                      valid={!wagerError}
-                    />
+                    <div className="rounded-2xl bg-black/15 p-5 text-sm tnum" aria-live="polite">
+                      <p className="felt-print">This wager costs</p>
+                      <p className="mt-2 text-3xl font-bold text-card">{wagerError ? "—" : fmt(effectiveWager + fee)}</p>
+                      <p className="mt-1 text-card/60">
+                        {wagerError
+                          ? "Fix the amount to see the cost."
+                          : `${fmt(effectiveWager)} wager + ${fmt(fee)} admin fee`}
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -339,9 +352,48 @@ export default function Lobby() {
                     Leave house deck “{deckName}”, play random cards
                   </button>
                 )}
+              </>
+            )}
 
-                <div className="mt-8">
-                  <OddsTable />
+            {step === 3 && (
+              <>
+                <p className="mt-2 text-card/65">
+                  Optional. A charm tilts the odds of the face-down cards for this round only. It&apos;s paid up front and
+                  never returned.
+                </p>
+                <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
+                  <div>
+                    {charmsOn ? (
+                      <CharmPicker
+                        value={usedCharm}
+                        onChange={(c) => {
+                          setCharm(c);
+                          sfx.chip();
+                        }}
+                        wager={wagerError ? 0 : effectiveWager}
+                        budget={wagerError ? 0 : budget}
+                        disabled={live || !!wagerError}
+                      />
+                    ) : (
+                      <p className="rounded-2xl bg-black/15 p-5 text-sm text-card/70">
+                        The house deck sets every card at this table, so there&apos;s no luck to buy.
+                      </p>
+                    )}
+                    <div className="mt-6">
+                      <OddsTable charm={usedCharm} />
+                    </div>
+                  </div>
+                  <Receipt
+                    table={TABLE_COPY[activeMode].name}
+                    clock={clockLabel(rules.timers)}
+                    wager={effectiveWager}
+                    fee={fee}
+                    feePct={Math.round(rules.feeRate * 100)}
+                    charm={usedCharm === "none" ? null : charmOf(usedCharm).name}
+                    luck={luck}
+                    after={me.balance - effectiveWager - fee - luck}
+                    valid={!wagerError}
+                  />
                 </div>
               </>
             )}
@@ -357,7 +409,7 @@ export default function Lobby() {
           ) : (
             <span />
           )}
-          {step < 2 ? (
+          {step < LAST ? (
             <button type="button" onClick={() => goTo(step + 1)} className="plaque plaque-brass min-w-56">
               Next: {STEPS[step + 1].short}
               <span className="kbd">Enter</span>
@@ -370,7 +422,7 @@ export default function Lobby() {
                 disabled={live || !!wagerError}
                 className="plaque plaque-brass min-w-60 py-4 text-sm"
               >
-                {wagerError ? "Deal me in" : `Deal me in · ${fmt(effectiveWager)}${fee ? ` + ${fmt(fee)} fee` : ""}`}
+                {wagerError ? "Deal me in" : `Deal me in · ${fmt(effectiveWager + fee + luck)}`}
               </button>
             )
           )}
@@ -413,7 +465,7 @@ function Progress({
 }) {
   return (
     <nav aria-label="Progress">
-      <ol className="grid grid-cols-3 gap-2">
+      <ol className="grid grid-cols-4 gap-2">
         {STEPS.map((s, i) => {
           const state = i === step ? "current" : i <= reached ? "done" : "todo";
           return (
@@ -474,6 +526,8 @@ function Receipt(p: {
   wager: number;
   fee: number;
   feePct: number;
+  charm: string | null;
+  luck: number;
   after: number;
   valid: boolean;
 }) {
@@ -498,9 +552,15 @@ function Receipt(p: {
           <dt className="text-ink-soft">Admin fee ({p.feePct}%)</dt>
           <dd className="font-semibold tnum">{p.valid ? fmt(p.fee) : "—"}</dd>
         </div>
+        {p.charm && (
+          <div className={row}>
+            <dt className="text-ink-soft">{p.charm}</dt>
+            <dd className="font-semibold tnum">{p.valid ? fmt(p.luck) : "—"}</dd>
+          </div>
+        )}
         <div className={`${row} border-t border-ink/15 pt-2.5 text-base`}>
           <dt className="font-bold">You pay</dt>
-          <dd className="font-bold tnum">{p.valid ? fmt(p.wager + p.fee) : "—"}</dd>
+          <dd className="font-bold tnum">{p.valid ? fmt(p.wager + p.fee + p.luck) : "—"}</dd>
         </div>
         <div className={row}>
           <dt className="text-ink-soft">Balance after</dt>

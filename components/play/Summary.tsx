@@ -2,6 +2,7 @@
 
 import { motion } from "motion/react";
 import { OpText } from "@/components/table/Card";
+import { charmOf } from "@/lib/engine/charms";
 import { fmt } from "@/lib/engine/ops";
 import { seedLabel } from "@/lib/engine/rng";
 import type { Round } from "@/lib/engine/round";
@@ -15,11 +16,14 @@ interface Props {
   onHide: () => void;
   canAgain: boolean;
   maxWager: number;
+  /** Name of the charm "Deal again" will buy, if any. */
+  againCharm: string | null;
 }
 
-export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain, maxWager }: Props) {
+export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain, maxWager, againCharm }: Props) {
   const paid = round.outcome === "cashed" ? round.pot : 0;
-  const net = paid - round.wager - round.fee;
+  const luck = round.charmCost ?? 0;
+  const net = paid - round.wager - round.fee - luck;
 
   // Cards still in the stack/queue when the player cashed out, in the order they'd have come out.
   const left = round.mode === "recursion" ? [] : round.mode === "stack" ? round.structure.slice().reverse() : round.structure;
@@ -67,7 +71,8 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain, ma
             <span className="text-card/50"> · balance {fmt(balance)}</span>
           </p>
           <p className="mt-0.5 text-xs text-card/45 tnum">
-            wager {fmt(round.wager)} · admin fee {fmt(round.fee)} · paid out {fmt(paid)}
+            wager {fmt(round.wager)} · admin fee {fmt(round.fee)}
+            {luck > 0 && ` · ${charmOf(round.charm).name.toLowerCase()} ${fmt(luck)}`} · paid out {fmt(paid)}
           </p>
           {(round.timedOut || round.autoPicked) && (
             <p className="mt-2 text-xs font-semibold text-brass-hi">
@@ -161,6 +166,7 @@ export function Summary({ round, balance, onAgain, onLobby, onHide, canAgain, ma
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button type="button" onClick={onAgain} disabled={!canAgain} className="plaque plaque-brass flex-1 whitespace-nowrap">
           Deal again · {fmt(Math.min(round.wager, maxWager))}
+          {againCharm && ` + ${againCharm.toLowerCase()}`}
           <span className="kbd">Enter</span>
         </button>
         <button type="button" onClick={onLobby} className="plaque plaque-ghost flex-1 whitespace-nowrap">

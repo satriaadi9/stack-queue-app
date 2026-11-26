@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { fmt } from "@/lib/engine/ops";
 import { sfx } from "@/lib/sfx";
+import { decodeDeck } from "@/lib/engine/deck-code";
 import { START_BALANCE, START_LIMITS, START_PRESETS, useGame } from "@/lib/store";
 
 const PRESETS: readonly number[] = START_PRESETS;
@@ -10,6 +11,9 @@ const PRESETS: readonly number[] = START_PRESETS;
 /** How many chips a brand-new player sits down with. Folded away until asked for. */
 export function StartingChips() {
   const start = useGame((s) => s.startBalance);
+  const deckName = useGame((s) => s.deckName);
+  // A house deck can fix the starting chips for everyone at its table.
+  const deckChips = useGame((s) => (s.deckCode ? (decodeDeck(s.deckCode)?.startChips ?? null) : null));
   const setStart = useGame((s) => s.setStartBalance);
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState(!PRESETS.includes(start));
@@ -17,6 +21,17 @@ export function StartingChips() {
 
   const parsed = /^\d{1,7}$/.test(text) ? Number(text) : NaN;
   const ok = parsed >= START_LIMITS.min && parsed <= START_LIMITS.max;
+
+  if (deckChips !== null) {
+    return (
+      <section className="mt-5 w-full max-w-md px-1" aria-labelledby="start-h">
+        <p id="start-h" className="text-sm text-card/60">
+          New players start with <strong className="font-semibold text-brass-hi tnum">{fmt(deckChips)}</strong> chips
+          <span className="text-card/45"> · set by the house deck{deckName ? ` “${deckName}”` : ""}</span>
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="mt-5 w-full max-w-md" aria-labelledby="start-h">

@@ -19,6 +19,7 @@ async function sit(page: Page, initials: string, mode: RegExp, wager = 100, deck
   await page.getByRole("button", { name: /^Next: Clock & fee/ }).click();
   await page.getByRole("button", { name: /^Next: Wager/ }).click();
   await page.getByRole("button", { name: `Wager ${wager}`, exact: true }).click();
+  await page.getByRole("button", { name: /^Next: Luck/ }).click();
   await page.getByRole("button", { name: /Deal me in/ }).click();
   await page.waitForURL("**/play");
 }
@@ -165,7 +166,9 @@ test("the wager can be typed and respects the fee", async ({ page }) => {
   await input.fill("1000");
   await expect(page.getByText("the most you can wager is 909")).toBeVisible();
   await input.fill("137");
-  await expect(page.getByRole("button", { name: "Deal me in · 137 + 14 fee" })).toBeEnabled();
+  await expect(page.getByText("137 wager + 14 admin fee")).toBeVisible();
+  await page.getByRole("button", { name: /^Next: Luck/ }).click();
+  await expect(page.getByRole("button", { name: "Deal me in · 151" })).toBeEnabled();
   await expect(page.getByRole("complementary", { name: "Round summary" })).toContainText("151"); // you pay
   // Completed steps stay reachable from the progress bar.
   await page.getByRole("navigation", { name: "Progress" }).getByRole("button", { name: /Table/ }).click();
@@ -180,8 +183,8 @@ test("new players can start with custom chips", async ({ page }) => {
   await page.getByRole("radio", { name: /^5,000/ }).click();
   await expect(page.getByText(/New players start with\s*5,000\s*chips/)).toBeVisible();
   await page.getByRole("radio", { name: "Custom" }).click();
-  await page.getByLabel("Chips for each new player").fill("50");
-  await expect(page.getByText("100 to 1,000,000")).toBeVisible(); // too low: not applied
+  await page.getByLabel("Chips for each new player").fill("5");
+  await expect(page.getByLabel("Chips for each new player")).toHaveAttribute("aria-invalid", "true"); // below 10
   await page.getByLabel("Chips for each new player").fill("1234");
   await page.getByLabel("Your initials").fill("CUS");
   await page.getByRole("button", { name: "Take a seat" }).click();
@@ -208,4 +211,47 @@ test("all players can be reset from home", async ({ page }) => {
   await expect(page.getByText("Regulars on this device")).toHaveCount(0);
   await page.goto("/regulars");
   await expect(page.getByText(/Nobody.s played here yet/)).toBeVisible();
+});
+
+test("a luck charm is paid up front and shown on the table", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Your initials").fill("LUK");
+  await page.getByRole("button", { name: "Take a seat" }).click();
+  await page.waitForURL("**/lobby");
+  await page.getByRole("radio", { name: /The Tower/ }).click();
+  await page.getByRole("button", { name: /^Next: Clock & fee/ }).click();
+  await page.getByRole("button", { name: /^Next: Wager/ }).click();
+  await page.getByRole("button", { name: "Wager 100", exact: true }).click();
+  await page.getByRole("button", { name: /^Next: Luck/ }).click();
+  await expect(page.getByRole("radio", { name: /^No charm/ })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: /^Gold charm/ }).click();
+  await expect(page.getByRole("complementary", { name: "Round summary" })).toContainText("Gold charm");
+  await page.getByRole("button", { name: "Deal me in · 150" }).click();
+  await page.waitForURL("**/play");
+  await expect(page.getByText(/Gold charm ·/)).toBeVisible();
+  await expect(chips(page)).toHaveText("850"); // 1000 − 100 − 10 fee − 40 charm
+});
+
+test("a fully set house deck has no luck to buy", async ({ page }) => {
+  await page.goto(`/?deck=${DECK}`);
+  await page.getByLabel("Your initials").fill("NOL");
+  await page.getByRole("button", { name: "Take a seat" }).click();
+  await page.waitForURL("**/lobby");
+  await page.getByRole("button", { name: /^Next: Clock & fee/ }).click();
+  await page.getByRole("button", { name: /^Next: Wager/ }).click();
+  await page.getByRole("button", { name: /^Next: Luck/ }).click();
+  await expect(page.getByText(/no luck to buy/)).toBeVisible();
+  await expect(page.getByRole("radio", { name: /Gold charm/ })).toHaveCount(0);
+});
+
+test("the host deck link sets the starting chips", async ({ page }) => {
+  await page.goto("/host");
+  await page.getByRole("radiogroup", { name: "Starting chips" }).getByRole("radio", { name: "2,500" }).click();
+  await page.getByRole("button", { name: "Play it here" }).click();
+  await expect(page.getByText(/New players start with\s*2,500\s*chips/)).toBeVisible();
+  await expect(page.getByText(/set by the house deck/)).toBeVisible();
+  await page.getByLabel("Your initials").fill("HST");
+  await page.getByRole("button", { name: "Take a seat" }).click();
+  await page.waitForURL("**/lobby");
+  await expect(chips(page)).toHaveText("2,500");
 });
