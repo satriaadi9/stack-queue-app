@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Stack & Deal
 
-## Getting Started
+A casino-table card game for learning **stack**, **queue** and **recursion**. Players wager virtual chips, pick face-down cards holding operations (×20, −21, +5 …), and the data structure decides the order those operations hit the pot. Same cards, different structure, different payout.
 
-First, run the development server:
+- **The Tower (stack, LIFO):** the last card picked is applied first.
+- **The Conveyor (queue, FIFO):** cards are applied in the order picked; you can enqueue more mid-round.
+- **The Rabbit Hole (recursion):** dive deeper for more cards, risk a stack overflow, and results unwind deepest-first.
+
+After every round, a "what if" panel replays the same cards in the other order, so players can see what the structure was worth.
+
+Hosts (e.g. lecturers) can build a fixed deck at `/host` and share it as a link or QR code. Chips are virtual only and are stored in each player's browser (localStorage). There is no backend.
+
+## Develop
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm test           # engine unit tests (Vitest)
+npm run build && npm run e2e   # browser smoke tests (Playwright, desktop + mobile)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The game rules live in `lib/engine/` as pure TypeScript with no React, so they can be unit-tested. Odds and card values are in `lib/engine/pool.ts`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy to Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Push the repo to GitHub, then import it at vercel.com/new. No environment variables are needed. Alternatively, run `npx vercel` from this folder.
