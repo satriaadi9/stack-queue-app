@@ -172,3 +172,40 @@ test("the wager can be typed and respects the fee", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Choose your table" })).toBeVisible();
 });
 
+
+test("new players can start with custom chips", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText(/New players start with\s*1,000\s*chips/)).toBeVisible();
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("radio", { name: /^5,000/ }).click();
+  await expect(page.getByText(/New players start with\s*5,000\s*chips/)).toBeVisible();
+  await page.getByRole("radio", { name: "Custom" }).click();
+  await page.getByLabel("Chips for each new player").fill("50");
+  await expect(page.getByText("100 to 1,000,000")).toBeVisible(); // too low: not applied
+  await page.getByLabel("Chips for each new player").fill("1234");
+  await page.getByLabel("Your initials").fill("CUS");
+  await page.getByRole("button", { name: "Take a seat" }).click();
+  await page.waitForURL("**/lobby");
+  await expect(chips(page)).toHaveText("1,234");
+});
+
+test("all players can be reset from home", async ({ page }) => {
+  for (const who of ["ONE", "TWO"]) {
+    await page.goto("/");
+    await page.getByLabel("Your initials").fill(who);
+    await page.getByRole("button", { name: "Take a seat" }).click();
+    await page.waitForURL("**/lobby");
+  }
+  await page.goto("/");
+  const regulars = page.getByRole("region", { name: "Regulars on this device" });
+  await expect(regulars.getByRole("button", { name: /^ONE/ })).toBeVisible();
+  await page.getByRole("button", { name: "Reset all players" }).click();
+  await page.getByRole("button", { name: "Keep them" }).click();
+  await expect(regulars.getByRole("button", { name: /^TWO/ })).toBeVisible();
+  await page.getByRole("button", { name: "Reset all players" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Delete all 2 players");
+  await page.getByRole("button", { name: "Delete everyone" }).click();
+  await expect(page.getByText("Regulars on this device")).toHaveCount(0);
+  await page.goto("/regulars");
+  await expect(page.getByText(/Nobody.s played here yet/)).toBeVisible();
+});

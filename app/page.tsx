@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { InitialsPicker } from "@/components/InitialsPicker";
 import { useHydrated } from "@/components/Providers";
+import { StartingChips } from "@/components/StartingChips";
 import { Rail } from "@/components/table/Rail";
 import { fmt } from "@/lib/engine/ops";
+import { sfx } from "@/lib/sfx";
 import { isLive, useGame } from "@/lib/store";
 
 export default function Home() {
@@ -14,6 +17,8 @@ export default function Home() {
   const login = useGame((s) => s.login);
   const profiles = useGame((s) => s.profiles);
   const deckName = useGame((s) => s.deckName);
+  const resetAll = useGame((s) => s.resetAll);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const seat = (initials: string) => {
     login(initials);
@@ -21,6 +26,7 @@ export default function Home() {
   };
 
   const regulars = Object.values(profiles).sort((a, b) => b.lastPlayed - a.lastPlayed);
+  const midRound = regulars.filter((p) => isLive(p.round)).length;
 
   return (
     <>
@@ -45,16 +51,62 @@ export default function Home() {
           {hydrated ? <InitialsPicker onSubmit={seat} /> : <div className="h-[340px]" />}
         </div>
 
+        {hydrated && <StartingChips />}
+
         {hydrated && regulars.length > 0 && (
           <section className="mt-12 w-full max-w-md" aria-labelledby="regulars-h">
-            <div className="mb-3 flex items-baseline justify-between">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
               <h2 id="regulars-h" className="felt-print">
                 Regulars on this device
               </h2>
-              <Link href="/regulars" className="text-xs text-card/55 underline-offset-4 hover:text-card hover:underline">
-                Leaderboard
-              </Link>
+              <div className="flex gap-4">
+                <Link href="/regulars" className="text-xs text-card/55 underline-offset-4 hover:text-card hover:underline">
+                  Leaderboard
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(true)}
+                  aria-expanded={confirmReset}
+                  className="text-xs text-card/55 underline-offset-4 hover:text-loss-hi hover:underline"
+                >
+                  Reset all players
+                </button>
+              </div>
             </div>
+
+            {confirmReset && (
+              <div role="alertdialog" aria-labelledby="reset-h" className="mb-4 rounded-2xl border border-loss/60 bg-loss/10 p-4">
+                <p id="reset-h" className="text-sm font-semibold text-card">
+                  Delete all {regulars.length} {regulars.length === 1 ? "player" : "players"} on this device?
+                </p>
+                <p className="mt-1 text-sm text-card/65">
+                  Their chips, records and loans go too
+                  {midRound > 0 && <>, along with {midRound === 1 ? "an unfinished round" : `${midRound} unfinished rounds`}</>}.
+                  This can&apos;t be undone. Your clock, sound and starting-chips settings stay.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetAll();
+                      setConfirmReset(false);
+                      sfx.bust();
+                    }}
+                    className="rounded-lg bg-loss px-3.5 py-2 text-sm font-semibold text-card hover:bg-loss-hi"
+                  >
+                    Delete everyone
+                  </button>
+                  <button
+                    type="button"
+                    autoFocus
+                    onClick={() => setConfirmReset(false)}
+                    className="rounded-lg bg-black/25 px-3.5 py-2 text-sm font-semibold text-card/80 hover:bg-black/35"
+                  >
+                    Keep them
+                  </button>
+                </div>
+              </div>
+            )}
             <ul className="flex flex-wrap gap-2">
               {regulars.slice(0, 8).map((p) => (
                 <li key={p.initials}>

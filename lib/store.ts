@@ -17,6 +17,11 @@ import {
 } from "./engine/rules";
 
 export const START_BALANCE = 1000;
+/** Quick picks for how many chips a new player sits down with. */
+export const START_PRESETS = [500, 1000, 2500, 5000, 10000] as const;
+export const START_LIMITS = { min: 100, max: 1_000_000 } as const;
+export const clampStart = (n: number) =>
+  Math.min(START_LIMITS.max, Math.max(START_LIMITS.min, Math.round(Number.isFinite(n) ? n : START_BALANCE)));
 export const LOAN_AMOUNT = 500;
 export const MIN_WAGER = 10;
 
@@ -39,6 +44,8 @@ interface State {
   lastMode: TableChoice;
   lastWager: number;
   muted: boolean;
+  /** Chips a brand-new player starts with. Existing players keep theirs. */
+  startBalance: number;
   timerPreset: TimerPreset;
   customTimers: Timers;
   /** Raw code of the house deck in play, if any. */
@@ -55,12 +62,15 @@ interface State {
   setTimers: (preset: TimerPreset, custom?: Timers) => void;
   toggleMute: () => void;
   forget: (initials: string) => void;
+  setStartBalance: (n: number) => void;
+  /** Delete every player on this device, with their chips and records. */
+  resetAll: () => void;
 }
 
-export const newProfile = (initials: string): Profile => ({
+export const newProfile = (initials: string, balance: number = START_BALANCE): Profile => ({
   initials,
-  balance: START_BALANCE,
-  best: START_BALANCE,
+  balance,
+  best: balance,
   biggestWin: 0,
   rounds: 0,
   wins: 0,
@@ -114,6 +124,7 @@ export const useGame = create<State>()(
         lastMode: "stack",
         lastWager: 50,
         muted: false,
+        startBalance: START_BALANCE,
         timerPreset: DEFAULT_TIMER_PRESET,
         customTimers: { pick: 20, open: 30 },
         deckCode: null,
@@ -122,7 +133,7 @@ export const useGame = create<State>()(
         login: (initials) =>
           set((s) => {
             const key = initials.toUpperCase();
-            const profiles = s.profiles[key] ? s.profiles : { ...s.profiles, [key]: newProfile(key) };
+            const profiles = s.profiles[key] ? s.profiles : { ...s.profiles, [key]: newProfile(key, clampStart(s.startBalance)) };
             return { profiles, active: key };
           }),
 
@@ -215,6 +226,11 @@ export const useGame = create<State>()(
             delete profiles[initials];
             return { profiles, active: s.active === initials ? null : s.active };
           }),
+
+        setStartBalance: (n) => set({ startBalance: clampStart(n) }),
+
+        // Settings (clock, mute, house deck, starting chips) stay; only players go.
+        resetAll: () => set({ profiles: {}, active: null, lastWager: 50 }),
       };
     },
     {
