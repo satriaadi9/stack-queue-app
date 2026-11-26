@@ -9,7 +9,17 @@ const PRESETS = Object.entries(TIMER_PRESETS) as [Exclude<TimerPreset, "custom">
 const secs = (s: number) => (s === 0 ? "no limit" : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60 ? ` ${s % 60}s` : ""}`);
 
 /** Clock and admin fee for the next round. Locked when a house deck sets them. */
-export function TableRules({ rules, wager, disabled }: { rules: Rules; wager: number; disabled: boolean }) {
+export function TableRules({
+  rules,
+  wager,
+  disabled,
+  className = "",
+}: {
+  rules: Rules;
+  wager: number;
+  disabled: boolean;
+  className?: string;
+}) {
   const preset = useGame((s) => s.timerPreset);
   const custom = useGame((s) => s.customTimers);
   const setTimers = useGame((s) => s.setTimers);
@@ -34,7 +44,7 @@ export function TableRules({ rules, wager, disabled }: { rules: Rules; wager: nu
   const fee = tableFee(wager, rules.feeRate);
 
   return (
-    <section className="mt-10 grid gap-4 md:grid-cols-[1.6fr_1fr]" aria-labelledby="rules-h">
+    <section className={`grid gap-4 md:grid-cols-[1.6fr_1fr] ${className}`} aria-labelledby="rules-h">
       <h2 id="rules-h" className="sr-only">
         Table rules
       </h2>
@@ -126,8 +136,8 @@ export function TableRules({ rules, wager, disabled }: { rules: Rules; wager: nu
             "This table charges no fee."
           ) : (
             <>
-              of your wager, at least 1 chip, paid on top and never returned. On {fmt(wager || 0)} that&apos;s{" "}
-              <strong className="font-semibold text-card tnum">{fmt(fee)}</strong>.
+              of your wager, at least 1 chip, paid on top and never returned. On a wager of {fmt(wager || 100)}{" "}
+              that&apos;s <strong className="font-semibold text-card tnum">{fmt(wager ? fee : tableFee(100, rules.feeRate))}</strong>.
             </>
           )}
         </p>

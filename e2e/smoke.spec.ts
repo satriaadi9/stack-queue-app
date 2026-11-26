@@ -16,6 +16,8 @@ async function sit(page: Page, initials: string, mode: RegExp, wager = 100, deck
   await page.getByRole("button", { name: "Take a seat" }).click();
   await page.waitForURL("**/lobby");
   await page.getByRole("radio", { name: mode }).click();
+  await page.getByRole("button", { name: /^Next: Clock & fee/ }).click();
+  await page.getByRole("button", { name: /^Next: Wager/ }).click();
   await page.getByRole("button", { name: `Wager ${wager}`, exact: true }).click();
   await page.getByRole("button", { name: /Deal me in/ }).click();
   await page.waitForURL("**/play");
@@ -154,10 +156,19 @@ test("the wager can be typed and respects the fee", async ({ page }) => {
   await page.getByLabel("Your initials").fill("TYP");
   await page.getByRole("button", { name: "Take a seat" }).click();
   await page.waitForURL("**/lobby");
+  await expect(page.getByRole("heading", { name: "Choose your table" })).toBeVisible();
+  await expect(page.getByLabel("Or type your own amount")).toHaveCount(0); // one step at a time
+  await page.getByRole("button", { name: /^Next: Clock & fee/ }).click();
+  await expect(page.getByRole("heading", { name: "Clock" })).toBeVisible();
+  await page.getByRole("button", { name: /^Next: Wager/ }).click();
   const input = page.getByLabel("Or type your own amount");
   await input.fill("1000");
   await expect(page.getByText("the most you can wager is 909")).toBeVisible();
   await input.fill("137");
   await expect(page.getByRole("button", { name: "Deal me in · 137 + 14 fee" })).toBeEnabled();
+  await expect(page.getByRole("complementary", { name: "Round summary" })).toContainText("151"); // you pay
+  // Completed steps stay reachable from the progress bar.
+  await page.getByRole("navigation", { name: "Progress" }).getByRole("button", { name: /Table/ }).click();
+  await expect(page.getByRole("heading", { name: "Choose your table" })).toBeVisible();
 });
 
