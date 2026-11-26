@@ -2,8 +2,10 @@
 
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useMemo } from "react";
+import { BackLegend } from "@/components/table/BackLegend";
 import { Card } from "@/components/table/Card";
 import { PotCounter } from "@/components/table/PotCounter";
+import { weightsFor } from "@/lib/engine/charms";
 import { dealOffer, type Card as CardT } from "@/lib/engine/deal";
 import { fmt } from "@/lib/engine/ops";
 import { MAX_DEPTH, overflowRisk, projectedReturn, type Action, type Legal, type Round } from "@/lib/engine/round";
@@ -48,7 +50,7 @@ export function RecursionTable({ round, can, locked, dispatch }: Props) {
   const passed = useMemo(() => {
     if (round.offer || round.phase !== "build" || round.structure.length < round.depth) return [];
     const chosen = round.structure[round.depth - 1];
-    return dealOffer(round.seed, round.depth, round.preset).filter((c) => c.id !== chosen?.id);
+    return dealOffer(round.seed, round.depth, round.preset, weightsFor(round.charm)).filter((c) => c.id !== chosen?.id);
   }, [round]);
 
   return (
@@ -73,6 +75,7 @@ export function RecursionTable({ round, can, locked, dispatch }: Props) {
             depth {round.depth}/{MAX_DEPTH}
           </span>
         </div>
+        {round.offer && <BackLegend charm={round.charm} hostSet={!!round.preset} />}
 
         <div className="flex min-h-[150px] items-center justify-center gap-4 sm:gap-6">
           {round.offer?.map((c, i) => (

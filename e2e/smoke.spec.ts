@@ -255,3 +255,16 @@ test("the host deck link sets the starting chips", async ({ page }) => {
   await page.waitForURL("**/lobby");
   await expect(chips(page)).toHaveText("2,500");
 });
+
+test("the table explains what each card colour means", async ({ page }) => {
+  await sit(page, "CLR", /The Tower/);
+  const legend = page.getByRole("group", { name: "Card colours" });
+  await legend.getByRole("button", { name: /Teal/ }).click();
+  await expect(page.getByRole("tooltip")).toContainText("Rare");
+  await expect(page.getByRole("tooltip")).toContainText("×1.4");
+  await legend.getByRole("button", { name: /Gold/ }).click();
+  await expect(page.getByRole("tooltip")).toContainText("shot at ×3");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await expect(card(page, 1)).toHaveAttribute("title", /back: /);
+});

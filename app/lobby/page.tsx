@@ -404,7 +404,10 @@ export default function Lobby() {
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-felt-print/10 pt-6">
           {step > 0 ? (
             <button type="button" onClick={() => goTo(step - 1)} className="plaque plaque-ghost">
-              ← Back
+              <span className="plaque-arrow-back" aria-hidden>
+                ←
+              </span>
+              Back
             </button>
           ) : (
             <span />
@@ -412,6 +415,9 @@ export default function Lobby() {
           {step < LAST ? (
             <button type="button" onClick={() => goTo(step + 1)} className="plaque plaque-brass min-w-56">
               Next: {STEPS[step + 1].short}
+              <span className="plaque-arrow" aria-hidden>
+                →
+              </span>
               <span className="kbd">Enter</span>
             </button>
           ) : (

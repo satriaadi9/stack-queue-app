@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { BackLegend } from "@/components/table/BackLegend";
 import { Card, CardGhost } from "@/components/table/Card";
 import { PotCounter } from "@/components/table/PotCounter";
 import { fmt } from "@/lib/engine/ops";
@@ -32,6 +33,7 @@ export function LinearTable({ round, can, locked, dispatch }: Props) {
             <DeckHint round={round} can={can} />
           </p>
         </div>
+        {!done && <BackLegend charm={round.charm} hostSet={!!round.preset} />}
         <div className="mx-auto grid w-fit grid-cols-4 gap-2.5 sm:grid-cols-6 sm:gap-4">
           {round.board.map((c) =>
             round.taken.includes(c.id) ? (

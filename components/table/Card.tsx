@@ -6,6 +6,13 @@ import { formatOp, opSign } from "@/lib/engine/ops";
 import { backOf, tierDef } from "@/lib/engine/pool";
 
 const BACK_NAME = { plain: "cream", teal: "teal", oxblood: "oxblood", gold: "gold" } as const;
+/** What each back can hide, for the hover hint on face-down cards. */
+const BACK_HINT = {
+  plain: "common: a small nudge",
+  teal: "rare: a bigger move",
+  oxblood: "epic: doubles or halves",
+  gold: "legendary ×3, or a curse",
+} as const;
 
 export type CardSize = "sm" | "md" | "lg";
 
@@ -50,7 +57,8 @@ export function Card({ card, faceUp, size = "md", showSlot = true, emphasis, onC
     label ??
     (faceUp
       ? `Card ${card.slot}: ${formatOp(card.op)}, ${tierDef(card.tier).label}`
-      : `Card ${card.slot}, ${BACK_NAME[back]} back, face down`);
+      : `Card ${card.slot}, ${BACK_NAME[back]} back (${BACK_HINT[back]}), face down`);
+  const hint = faceUp ? undefined : `${BACK_NAME[back][0].toUpperCase()}${BACK_NAME[back].slice(1)} back: ${BACK_HINT[back]}`;
 
   const body = (
     <motion.div
@@ -77,6 +85,7 @@ export function Card({ card, faceUp, size = "md", showSlot = true, emphasis, onC
         onClick={interactive ? onClick : undefined}
         disabled={disabled}
         aria-label={aria}
+        title={hint}
         className={`${shell} ${interactive ? "cursor-pointer" : "cursor-default"}`}
         whileHover={interactive ? { y: -6, rotate: -1.5 } : undefined}
         whileTap={interactive ? { y: -2, scale: 0.97 } : undefined}
