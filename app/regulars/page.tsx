@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Credit } from "@/components/Credit";
 import { useHydrated } from "@/components/Providers";
 import { Rail } from "@/components/table/Rail";
 import { fmt } from "@/lib/engine/ops";
@@ -96,6 +97,7 @@ export default function Regulars() {
             ← Back to the tables
           </Link>
         </div>
+        <Credit className="mt-8" />
       </main>
     </>
   );

@@ -63,3 +63,7 @@ The game rules live in `lib/engine/` as pure TypeScript with no React, so they c
 ## Deploy to Vercel
 
 Push the repo to GitHub, then import it at vercel.com/new. No environment variables are needed. Alternatively, run `npx vercel` from this folder.
+
+---
+
+© 2026 Stack & Deal · Created by [satriaadi9](https://github.com/satriaadi9)

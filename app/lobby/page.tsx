@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { Credit } from "@/components/Credit";
 import { CharmPicker } from "@/components/CharmPicker";
 import { ModeDiagram } from "@/components/ModeDiagram";
 import { OddsTable } from "@/components/OddsTable";
@@ -452,6 +453,7 @@ export default function Lobby() {
             Leave seat
           </button>
         </nav>
+        <Credit className="mt-8" />
       </main>
     </>
   );

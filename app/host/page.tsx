@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
+import { Credit } from "@/components/Credit";
 import { useHydrated } from "@/components/Providers";
 import { Card } from "@/components/table/Card";
 import { Rail } from "@/components/table/Rail";
@@ -300,6 +301,7 @@ export default function Host() {
             </div>
           </aside>
         </div>
+        <Credit className="mt-12" />
       </main>
     </>
   );

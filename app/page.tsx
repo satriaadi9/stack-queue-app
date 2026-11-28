@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Credit } from "@/components/Credit";
 import { InitialsPicker } from "@/components/InitialsPicker";
 import { useHydrated } from "@/components/Providers";
 import { StartingChips } from "@/components/StartingChips";
@@ -135,6 +136,7 @@ export default function Home() {
           </Link>
           <span>Virtual chips only · no real money</span>
         </footer>
+        <Credit className="mt-3 text-center" />
       </main>
     </>
   );
